@@ -4,4 +4,4 @@ numpy
 matplotlib
 scikit-learn
 joblib
-dvc
+dvc[s3]

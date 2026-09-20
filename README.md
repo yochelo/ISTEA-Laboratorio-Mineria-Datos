@@ -59,11 +59,20 @@ Para acceder al almacenamiento DVC es necesario contar con permisos de lectura
 sobre el repositorio en DagsHub y configurar las credenciales de acceso de
 forma local.
 
-Las credenciales no se almacenan en el repositorio.
+Las credenciales de acceso no se almacenan en el repositorio, sino que deben configurarse localmente con un token personal
+de DagsHub:
+
+    dvc remote modify origin --local access_key_id TU_TOKEN
+    dvc remote modify origin --local secret_access_key TU_TOKEN
+
+Estas credenciales se almacenan únicamente en la configuración local de DVC
+y no se versionan con Git.
 
 Una vez configurado el acceso, los datos y artefactos pueden descargarse con:
 
     dvc pull -r origin
+
+
 
 ## Ejecutar el pipeline
 

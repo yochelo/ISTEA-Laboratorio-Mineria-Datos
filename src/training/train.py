@@ -12,6 +12,8 @@ from src.features.build_preprocessor import build_preprocessor
 
 from src.evaluation.evaluate import evaluate_model
 import joblib
+import json
+
 
 def split_data(df):
     X = df.drop(columns=["customerID", "Churn"])
@@ -49,6 +51,7 @@ def main():
     }
 
     selected_model = None
+    selected_metrics = None
 
     for name, classifier in classifiers.items():
         model = train_model(X_train, y_train, classifier)
@@ -56,6 +59,7 @@ def main():
 
         if name == "Logistic Regression":
             selected_model = model
+            selected_metrics = metrics
 
         print(f"\n{name}")
         print(f"Accuracy: {metrics['accuracy']:.3f}")
@@ -64,7 +68,12 @@ def main():
         print(f"F1-score: {metrics['f1']:.3f}")
 
     joblib.dump(selected_model, "models/churn_model.joblib")
+
+    with open("reports/metrics.json", "w") as file:
+        json.dump(selected_metrics, file, indent=4)
+
     print("\nModelo guardado en models/churn_model.joblib")
+    print("Métricas guardadas en reports/metrics.json")
 
 if __name__ == "__main__":
     main()

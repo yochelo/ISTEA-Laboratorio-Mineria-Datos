@@ -21,8 +21,13 @@ stages:
       size: 1309
     - path: src/training/train.py
       hash: md5
-      md5: f0caff1835e6084ddbc01b8f810df6f4
-      size: 2258
+      md5: 5d3e64919bb7d52030cfb0e27b48c767
+      size: 2561
+    params:
+      params.yaml:
+        model.logistic_regression.max_iter: 1000
+        split.random_state: 42
+        split.test_size: 0.2
     outs:
     - path: models/churn_model.joblib
       hash: md5

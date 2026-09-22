@@ -7,6 +7,10 @@ stages:
       - src/features/build_preprocessor.py
       - src/evaluation/evaluate.py
       - src/training/train.py
+    params:
+      - split.test_size
+      - split.random_state
+      - model.logistic_regression.max_iter
     outs:
       - models/churn_model.joblib
     metrics:

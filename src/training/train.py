@@ -13,17 +13,17 @@ from src.features.build_preprocessor import build_preprocessor
 from src.evaluation.evaluate import evaluate_model
 import joblib
 import json
+import yaml
 
-
-def split_data(df):
+def split_data(df, test_size, random_state):
     X = df.drop(columns=["customerID", "Churn"])
     y = df["Churn"]
 
     return train_test_split(
         X,
         y,
-        test_size=0.20,
-        random_state=42,
+        test_size=test_size,
+        random_state=random_state,
         stratify=y
     )
 
@@ -40,13 +40,22 @@ def train_model(X_train, y_train, classifier):
     return model
 
 def main():
+    with open("params.yaml", "r") as file:
+        params = yaml.safe_load(file)
+
     df = load_data("data/raw/customer_churn_historical.csv")
 
-    X_train, X_test, y_train, y_test = split_data(df)
+    X_train, X_test, y_train, y_test = split_data(
+        df,
+        params["split"]["test_size"],
+        params["split"]["random_state"]
+    )
 
     classifiers = {
         "Baseline": DummyClassifier(strategy="most_frequent"),
-        "Logistic Regression": LogisticRegression(max_iter=1000),
+        "Logistic Regression": LogisticRegression(
+            max_iter=params["model"]["logistic_regression"]["max_iter"]
+        ),
         "Random Forest": RandomForestClassifier(random_state=42)
     }
 

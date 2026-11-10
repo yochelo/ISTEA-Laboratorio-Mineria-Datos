@@ -104,7 +104,19 @@ El entrenamiento registra parámetros y métricas en **MLflow**. Para visualizar
 mlflow ui --port 5000
 ```
 
-Abrir http://localhost:5000. El modelo seleccionado se registró en el **Model Registry local** como `ISTEA_Churn_LogisticRegression` (versión 1). La conexión del tracking de MLflow a DagsHub todavía está pendiente; DagsHub ya se utiliza para el almacenamiento remoto DVC.
+Abrir http://localhost:5000. El modelo seleccionado se registró en el **Model Registry local** como `ISTEA_Churn_LogisticRegression` (versión 1).
+
+### Tracking y Model Registry remoto (DagsHub)
+
+El proyecto también registra experimentos en el servidor MLflow de DagsHub:
+
+https://dagshub.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.mlflow/
+
+En el experimento remoto `ISTEA_Churn` se registraron tres ejecuciones (`Baseline`, `Logistic Regression` y `Random Forest`), con sus parámetros y métricas. El modelo `churn_pipeline` está vinculado a la ejecución de Logistic Regression y registrado en el **Model Registry remoto** como `ISTEA_Churn_LogisticRegression`, **versión 1**.
+
+Para enviar ejecuciones nuevas desde Python, se debe configurar `MLFLOW_TRACKING_URI` con la URL anterior y la autenticación de MLflow mediante `MLFLOW_TRACKING_USERNAME` y `MLFLOW_TRACKING_PASSWORD` en el entorno local, antes de entrenar. Se puede usar un token personal de DagsHub como contraseña. **No almacenar tokens ni credenciales en Git, archivos versionados o imágenes Docker.** Si no se configura el tracking remoto, MLflow utiliza su configuración local.
+
+La API actual carga el archivo `models/churn_model.joblib` recuperado con DVC. **Todavía no carga el modelo directamente desde el Registry remoto**, por lo que la versión registrada en DagsHub y el artefacto desplegado deben mantenerse coherentes.
 
 ## API REST con FastAPI
 
@@ -185,6 +197,10 @@ Compose expone el puerto 8001 del equipo hacia el 8000 del contenedor. Para dete
 ```cmd
 docker compose down
 ```
+
+## Estado de la segunda entrega
+
+El servicio, la contenerización y las seis pruebas existentes se ejecutaron correctamente. Respecto de la consigna de Entrega 2, aún está pendiente completar el contrato de salida de `POST /predict` con `risk_level` y `model_version`, declarar y probar ese contrato con Pydantic y marcar con el tag Git `entrega-2` el commit definitivo. Este README se actualizará de nuevo al cerrar esos cambios.
 
 ## Análisis exploratorio
 

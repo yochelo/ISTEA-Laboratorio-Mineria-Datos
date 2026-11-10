@@ -74,14 +74,14 @@ def main():
             mlflow.log_params(classifier.get_params())
             mlflow.log_metrics(metrics)
 
-        if name == "Logistic Regression":
-            selected_model = model
-            selected_metrics = metrics
-            mlflow.sklearn.log_model(
-                model,
-                name="churn_pipeline",
-                skops_trusted_types=["numpy.dtype"]
-            )
+            if name == "Logistic Regression":
+                selected_model = model
+                selected_metrics = metrics
+                mlflow.sklearn.log_model(
+                    model,
+                    name="churn_pipeline",
+                    skops_trusted_types=["numpy.dtype"]
+                )
 
         print(f"\n{name}")
         print(f"Accuracy: {metrics['accuracy']:.3f}")

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Literal
 
 class CustomerInput(BaseModel):
     gender: str
@@ -21,3 +21,9 @@ class CustomerInput(BaseModel):
     PaymentMethod: str
     MonthlyCharges: float = Field(ge=0)
     TotalCharges: float | None = None
+
+class PredictionResponse(BaseModel):
+    prediction: Literal["Yes", "No"]
+    probability: float = Field(ge=0, le=1)
+    risk_level: Literal["LOW", "MEDIUM", "HIGH"]
+    model_version: str

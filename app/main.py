@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.model_loader import load_model
 
 from fastapi import Request
-from app.schemas import CustomerInput
+from app.schemas import CustomerInput, PredictionResponse
 from app.inference import predict_churn
 
 
@@ -25,7 +25,7 @@ app = FastAPI(
 def health():
     return {"status": "ok"}
 
-@app.post("/predict")
+@app.post("/predict", response_model=PredictionResponse)
 def predict(customer: CustomerInput, request: Request):
     model = request.app.state.model
     return predict_churn(model, customer)

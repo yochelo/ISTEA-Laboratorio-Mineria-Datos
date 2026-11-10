@@ -6,3 +6,4 @@ scikit-learn
 joblib
 dvc[s3]
 pyyaml
+mlflow==3.18.0

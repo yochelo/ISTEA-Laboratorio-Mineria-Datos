@@ -8,3 +8,7 @@ __pycache__/
 
 # Archivos de Jupyter
 .ipynb_checkpoints/
+
+# MLflow local
+mlflow.db
+mlruns/

@@ -15,6 +15,9 @@ import joblib
 import json
 import yaml
 
+import mlflow
+import mlflow.sklearn
+
 def split_data(df, test_size, random_state):
     X = df.drop(columns=["customerID", "Churn"])
     y = df["Churn"]
@@ -61,14 +64,24 @@ def main():
 
     selected_model = None
     selected_metrics = None
+    mlflow.set_experiment("ISTEA_Churn")
 
     for name, classifier in classifiers.items():
-        model = train_model(X_train, y_train, classifier)
-        metrics = evaluate_model(model, X_test, y_test)
+        with mlflow.start_run(run_name=name):
+            model = train_model(X_train, y_train, classifier)
+            metrics = evaluate_model(model, X_test, y_test)
+
+            mlflow.log_params(classifier.get_params())
+            mlflow.log_metrics(metrics)
 
         if name == "Logistic Regression":
             selected_model = model
             selected_metrics = metrics
+            mlflow.sklearn.log_model(
+                model,
+                name="churn_pipeline",
+                skops_trusted_types=["numpy.dtype"]
+            )
 
         print(f"\n{name}")
         print(f"Accuracy: {metrics['accuracy']:.3f}")

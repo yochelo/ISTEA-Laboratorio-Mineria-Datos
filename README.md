@@ -129,7 +129,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Endpoints disponibles:
 
 - `GET /health`: devuelve `{"status":"ok"}`.
-- `POST /predict`: recibe los datos de un cliente y devuelve `prediction` (`Yes` o `No`) y `probability` (probabilidad estimada de `Yes`).
+- `POST /predict`: recibe las características de un cliente validadas con Pydantic y devuelve `prediction` (`Yes` o `No`), `probability` (probabilidad estimada de `Yes`), `risk_level` (`LOW`, `MEDIUM`, `HIGH`) y `model_version` (identificador declarado de versión). La respuesta también se valida mediante Pydantic.
 
 Documentación interactiva Swagger: http://localhost:8000/docs
 
@@ -159,7 +159,22 @@ Ejemplo de entrada para `POST /predict`:
 }
 ```
 
-Para ese ejemplo, el modelo probado devuelve `prediction: "Yes"` y una probabilidad aproximada de `0.8826`. Los datos incompletos o inválidos reciben un error de validación HTTP 422.
+Para ese ejemplo, la respuesta comprobada en Swagger con Docker Compose fue HTTP 200:
+
+```json
+{
+  "prediction": "Yes",
+  "probability": 0.8826254980782651,
+  "risk_level": "HIGH",
+  "model_version": "1"
+}
+```
+
+Se definieron umbrales iniciales de riesgo: **LOW** para probabilidad menor que 0.30, **MEDIUM** desde 0.30 y menor que 0.70, y **HIGH** desde 0.70. Son umbrales ilustrativos de negocio, no calibrados ni optimizados mediante validación. La clasificación `Yes/No` proviene de `model.predict` y puede no coincidir con el corte entre niveles de riesgo.
+
+La versión `"1"` se declara explícitamente en `app/inference.py` para identificar el modelo candidato de esta etapa; no se recupera dinámicamente del Registry. En un cambio de artefacto habrá que actualizar y comprobar ese identificador.
+
+Las solicitudes con campos obligatorios ausentes o valores que infringen las restricciones declaradas reciben HTTP 422.
 
 ## Pruebas automáticas
 
@@ -169,7 +184,7 @@ Desde la raíz del proyecto, con el entorno virtual activado:
 python -m pytest tests/ -v
 ```
 
-Se incluyen seis tests de carga de datos, preprocesamiento, modelo y endpoints API (`/health`, `/predict` y validación de entradas).
+Se incluyen seis tests de carga de datos, preprocesamiento, modelo y endpoints API (`/health`, `/predict` y validación de entradas). El test de predicción verifica los cuatro campos obligatorios, sus tipos básicos, la versión declarada y la coherencia del nivel de riesgo con los umbrales.
 
 ## Docker y Docker Compose
 
@@ -192,7 +207,13 @@ La API queda publicada en:
 - Salud: http://localhost:8001/health
 - Swagger: http://localhost:8001/docs
 
-Compose expone el puerto 8001 del equipo hacia el 8000 del contenedor. Para detener y eliminar los contenedores y la red creados por Compose (sin borrar la imagen ni los archivos del proyecto):
+Compose expone el puerto 8001 del equipo hacia el 8000 del contenedor. Para consultar logs básicos de ejecución:
+
+```cmd
+docker compose logs churn-api
+```
+
+Para detener y eliminar los contenedores y la red creados por Compose (sin borrar la imagen ni los archivos del proyecto):
 
 ```cmd
 docker compose down
@@ -200,7 +221,7 @@ docker compose down
 
 ## Estado de la segunda entrega
 
-El servicio, la contenerización y las seis pruebas existentes se ejecutaron correctamente. Respecto de la consigna de Entrega 2, aún está pendiente completar el contrato de salida de `POST /predict` con `risk_level` y `model_version`, declarar y probar ese contrato con Pydantic y marcar con el tag Git `entrega-2` el commit definitivo. Este README se actualizará de nuevo al cerrar esos cambios.
+El servicio se probó con Docker Compose y respondió HTTP 200 en `/predict` con los cuatro campos exigidos. Los seis tests locales finalizaron correctamente y el contrato de salida se define con Pydantic. **Pendiente de cierre:** marcar con el tag Git `entrega-2` el commit definitivo verificado.
 
 ## Análisis exploratorio
 

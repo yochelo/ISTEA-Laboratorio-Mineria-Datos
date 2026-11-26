@@ -1,0 +1,36 @@
+groups:
+  - name: ml-api.rules
+    rules:
+      - alert: HighPredictionLatency
+        expr: histogram_quantile(0.95, rate(ml_prediction_latency_seconds_bucket[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          owner: infraestructura
+        annotations:
+          summary: "Latencia p95 alta en API ML"
+          description: "El percentil 95 de la latencia de inferencia supera 0,5 segundos durante diez minutos."
+          impact: "Las predicciones pueden tardar más de lo esperado."
+          action: "Revisar el p95, la carga y los recursos del contenedor de la API."
+      - alert: APIUnavailable
+        expr: up{job="ml-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          owner: infraestructura
+        annotations:
+          summary: "Target de la API inaccesible"
+          description: "Prometheus no logra recolectar métricas de la API durante un minuto."
+          impact: "Las solicitudes de predicción podrían quedar sin servicio."
+          action: "Revisar el contenedor y la conectividad, restablecer el servicio y comprobar /ready y /health."
+      - alert: HighServerErrors
+        expr: sum(increase(http_requests_total{job="ml-api", route="/predict", status=~"5.."}[5m])) >= 2
+        for: 5m
+        labels:
+          severity: warning
+          owner: backend
+        annotations:
+          summary: "Errores 5xx recurrentes en predicción"
+          description: "La cantidad estimada de respuestas 5xx en /predict es al menos dos en cinco minutos y la condición persiste otros cinco minutos."
+          impact: "Parte de las solicitudes de predicción puede fallar."
+          action: "Buscar los request_id de los fallos, revisar los logs y diagnosticar el servicio."

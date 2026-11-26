@@ -1,0 +1,129 @@
+# Series sintéticas exclusivas de las pruebas de reglas.
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: Latencia normal y pico aislado
+    interval: 1m
+    input_series:
+      - series: 'ml_prediction_latency_seconds_bucket{le="0.5"}'
+        values: '0 10 20 30 30 40+10x15'
+      - series: 'ml_prediction_latency_seconds_bucket{le="1.0"}'
+        values: '0+10x20'
+      - series: 'ml_prediction_latency_seconds_bucket{le="+Inf"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HighPredictionLatency
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: HighPredictionLatency
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: HighPredictionLatency
+        exp_alerts: []
+  - name: Latencia sostenida y recuperación
+    interval: 1m
+    input_series:
+      - series: 'ml_prediction_latency_seconds_bucket{le="0.5"}'
+        values: '0+0x12 100+10x7'
+      - series: 'ml_prediction_latency_seconds_bucket{le="1.0"}'
+        values: '0+10x20'
+      - series: 'ml_prediction_latency_seconds_bucket{le="+Inf"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighPredictionLatency
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HighPredictionLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: infraestructura
+            exp_annotations:
+              summary: "Latencia p95 alta en API ML"
+              description: "El percentil 95 de la latencia de inferencia supera 0,5 segundos durante diez minutos."
+              impact: "Las predicciones pueden tardar más de lo esperado."
+              action: "Revisar el p95, la carga y los recursos del contenedor de la API."
+      - eval_time: 18m
+        alertname: HighPredictionLatency
+        exp_alerts: []
+  - name: Disponibilidad normal y caída aislada
+    interval: 1m
+    input_series:
+      - series: 'up{job="ml-api",instance="churn-api:8000"}'
+        values: '1 1 0 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: APIUnavailable
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: APIUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: APIUnavailable
+        exp_alerts: []
+  - name: Caída sostenida y recuperación
+    interval: 1m
+    input_series:
+      - series: 'up{job="ml-api",instance="churn-api:8000"}'
+        values: '1 0 0 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: APIUnavailable
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: APIUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: infraestructura
+              job: ml-api
+              instance: churn-api:8000
+            exp_annotations:
+              summary: "Target de la API inaccesible"
+              description: "Prometheus no logra recolectar métricas de la API durante un minuto."
+              impact: "Las solicitudes de predicción podrían quedar sin servicio."
+              action: "Revisar el contenedor y la conectividad, restablecer el servicio y comprobar /ready y /health."
+      - eval_time: 3m
+        alertname: APIUnavailable
+        exp_alerts: []
+  - name: Errores normales y error aislado
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="ml-api",route="/predict",status="500"}'
+        values: '0 0 1+0x14'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: HighServerErrors
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HighServerErrors
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: HighServerErrors
+        exp_alerts: []
+  - name: Errores recurrentes y recuperación
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="ml-api",route="/predict",status="500"}'
+        values: '0+2x10 20+0x8'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HighServerErrors
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: HighServerErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: backend
+            exp_annotations:
+              summary: "Errores 5xx recurrentes en predicción"
+              description: "La cantidad estimada de respuestas 5xx en /predict es al menos dos en cinco minutos y la condición persiste otros cinco minutos."
+              impact: "Parte de las solicitudes de predicción puede fallar."
+              action: "Buscar los request_id de los fallos, revisar los logs y diagnosticar el servicio."
+      - eval_time: 16m
+        alertname: HighServerErrors
+        exp_alerts: []

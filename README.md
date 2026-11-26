@@ -247,3 +247,16 @@ $env:EVIDENTLY_DISABLE_TELEMETRY = '1'
 El análisis requiere los CSV históricos y de producción en las rutas declaradas por sus punteros DVC. Si el CSV de producción todavía no está en el remoto, puede materializarse con `dvc checkout data/production/customer_churn_current.csv.dvc` desde una caché que tenga el objeto. También puede recuperarse del paquete original del profesor y comprobarse contra su checksum.
 
 Abrir `reports/drift_report.html` en el navegador. En el mismo directorio quedan `drift_report.json` con el resultado nativo de Evidently y `drift_provenance.json` con hashes, partición y modelo de referencia. Los tres archivos se regeneran al ejecutar el análisis. El lote de producción carece de etiquetas de churn.
+
+## Alertas operativas
+
+Levantar el stack con `docker compose up -d`. Consultar los estados en [Alertas de Prometheus](http://localhost:9090/alerts), la recolección en [Targets](http://localhost:9090/targets) y el dashboard en [Grafana](http://localhost:3000). Los criterios y el procedimiento de incidente están en el [plan de monitoreo](docs/plan_monitoreo.md).
+
+Con el stack activo, validar la configuración cargada y ejecutar las pruebas sintéticas desde PowerShell:
+
+```powershell
+docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
+docker run --rm --network none --mount "type=bind,source=$PWD/prometheus,target=/etc/prometheus,readonly" --entrypoint /bin/promtool prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
+```
+
+Para una demostración controlada de disponibilidad, detener solo `churn-api` con `docker compose stop churn-api`. Observar la alerta hasta que esté en estado `firing` y ejecutar `docker compose up -d churn-api`. Comprobar que el target vuelve a `UP` y revisar `/ready` y `/health`. Al finalizar, ejecutar `docker compose down` para conservar los volúmenes.

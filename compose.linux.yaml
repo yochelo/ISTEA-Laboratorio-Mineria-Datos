@@ -1,0 +1,12 @@
+services:
+  churn-api:
+    build: !reset null
+    image: ghcr.io/yochelo/istea-laboratorio-mineria-datos@sha256:bb4533c45d25fe198ab5495a60904c469a36fc1dc339ce45fe59268408864079
+    ports: !override
+      - "127.0.0.1:18001:8000"
+  prometheus:
+    ports: !override
+      - "127.0.0.1:19090:9090"
+  grafana:
+    ports: !override
+      - "127.0.0.1:13000:3000"

@@ -24,7 +24,7 @@ Para ejecutar el proyecto localmente:
 
 - Python 3.11
 - Git
-- Dependencias indicadas en `requirements.txt` (incluido DVC)
+- Dependencias indicadas en `requirements-ci.txt` para desarrollo y pruebas (incluido DVC)
 
 Para ejecutar la API mediante contenedores:
 
@@ -49,7 +49,7 @@ python -m venv .venv
 Instalar dependencias:
 
 ```cmd
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-ci.txt
 ```
 
 ## Obtener datos y modelo (DVC)
@@ -260,3 +260,23 @@ docker run --rm --network none --mount "type=bind,source=$PWD/prometheus,target=
 ```
 
 Para una demostración controlada de disponibilidad, detener solo `churn-api` con `docker compose stop churn-api`. Observar la alerta hasta que esté en estado `firing` y ejecutar `docker compose up -d churn-api`. Comprobar que el target vuelve a `UP` y revisar `/ready` y `/health`. Al finalizar, ejecutar `docker compose down` para conservar los volúmenes.
+
+## Preparación de CI
+
+Después del checkout de la revisión a verificar, preparar Python 3.11 y ejecutar los pasos en este orden:
+
+```bash
+python -m pip install -r requirements-ci.txt
+python -m pip check
+dvc pull -r origin data/raw/customer_churn_historical.csv.dvc train data/production/customer_churn_current.csv.dvc
+python -m pytest -q
+docker build --progress=plain -t istea-churn-api:ci .
+```
+
+Configurar el paso de `dvc pull` con las variables `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY`, vinculadas a los secretos propuestos `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY`. DVC usa el endpoint S3 de DagsHub definido en `.dvc/config`. Usar credenciales con lectura del repositorio, limitadas al paso de recuperación. [Autenticación de remotos S3 en DVC](https://doc.dvc.org/user-guide/data-management/remote-storage/amazon-s3#environment-variables)
+
+La suite completa usa el CSV histórico y `models/churn_model.joblib`. El target `train` de `dvc pull` recupera el joblib y `reports/metrics.json` según el lock aprobado. El CSV de producción completa la recuperación de evidencias y se usa en el análisis por lotes. Para el build, el Dockerfile copia el joblib, la API y su manifiesto de identidad, e instala `requirements-serving.txt`.
+
+En el futuro runner Linux se deben validar las ruedas de Python 3.11, el acceso de red a DagsHub y el arranque del contenedor. Git conserva CRLF en `requirements.txt` y en los cuatro módulos Python que DVC registra como dependencias de `train`. El build y la publicación versionada en GHCR deben depender del éxito de pytest. Las pruebas HTTP de CI deberán usar datos disponibles en el checkout, por ejemplo el caso válido empleado por la suite. El directorio externo del profesor está disponible en este laboratorio Windows.
+
+Para la etapa de publicación, usar una etiqueta vinculada al SHA de Git y reservar `GITHUB_TOKEN` con `packages: write` para el job de publicación. El checkout requiere `contents: read`. [Publicación de imágenes con GitHub Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)

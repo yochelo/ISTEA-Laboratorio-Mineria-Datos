@@ -1,0 +1,6 @@
+# Preservar los bytes registrados por el entrenamiento aprobado de DVC.
+requirements.txt text eol=crlf
+src/data/load_data.py text eol=crlf
+src/features/build_preprocessor.py text eol=crlf
+src/evaluation/evaluate.py text eol=crlf
+src/training/train.py text eol=crlf

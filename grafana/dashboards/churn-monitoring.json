@@ -1,0 +1,82 @@
+{
+  "uid": "istea-churn-monitoring",
+  "title": "ISTEA — Customer Churn Monitoring",
+  "description": "Señales operativas del servicio de churn. Las tasas usan una ventana de cinco minutos.",
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {"from": "now-5m", "to": "now"},
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Tráfico de /predict",
+      "description": "Solicitudes por segundo al endpoint, incluidas las rechazadas.",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(http_requests_total{route=\"/predict\"}[5m]))", "legendFormat": "Solicitudes", "range": true}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0, "custom": {"showPoints": "auto", "spanNulls": false}}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latencia p95 de inferencia",
+      "description": "Tiempo de inferencia estimado a partir del histograma. El umbral de 0,5 s es ilustrativo.",
+      "gridPos": {"x": 8, "y": 0, "w": 8, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, rate(ml_prediction_latency_seconds_bucket[5m]))", "legendFormat": "p95", "range": true}],
+      "fieldConfig": {"defaults": {
+        "unit": "suffix: s",
+        "min": 0,
+        "custom": {"axisSoftMax": 0.6, "spanNulls": false, "thresholdsStyle": {"mode": "line"}},
+        "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 0.5}]}
+      }}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Errores HTTP 5xx en /predict",
+      "description": "Sin datos puede indicar que no existe una serie 5xx o que el target no está disponible. Un cero se muestra solo cuando es un valor observado. Consultar up{job=\"ml-api\"} para confirmar disponibilidad.",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(http_requests_total{route=\"/predict\",status=~\"5..\"}[5m]))", "legendFormat": "5xx", "range": true}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0, "custom": {"spanNulls": false}}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Predicciones exitosas por versión",
+      "description": "Tasa de predicciones completadas, agrupadas por el identificador del modelo.",
+      "gridPos": {"x": 0, "y": 9, "w": 8, "h": 10},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (model_version) (rate(ml_predictions_total[5m]))", "legendFormat": "{{model_version}}", "range": true}],
+      "fieldConfig": {"defaults": {"unit": "suffix: pred/s", "min": 0, "custom": {"spanNulls": false}}}
+    },
+    {
+      "id": 5,
+      "type": "heatmap",
+      "title": "Distribución de scores",
+      "description": "Tasa por intervalo de score. El formato Heatmap de Prometheus convierte los buckets acumulativos en intervalos independientes.",
+      "gridPos": {"x": 8, "y": 9, "w": 8, "h": 10},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (le) (rate(ml_prediction_score_bucket[5m]))", "format": "heatmap", "legendFormat": "{{le}}", "range": true}],
+      "options": {
+        "calculate": false,
+        "yAxis": {"axisLabel": "Score de Yes", "min": 0, "max": 1, "decimals": 1},
+        "color": {"mode": "scheme", "scheme": "Oranges", "steps": 32, "scale": "linear"},
+        "legend": {"show": true},
+        "tooltip": {"show": true, "yHistogram": false}
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Validaciones fallidas en /predict",
+      "description": "Solicitudes rechazadas por el contrato de entrada con HTTP 422.",
+      "gridPos": {"x": 16, "y": 9, "w": 8, "h": 10},
+      "datasource": {"type": "prometheus", "uid": "istea-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(http_requests_total{route=\"/predict\",status=\"422\"}[5m]))", "legendFormat": "422", "range": true}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0, "custom": {"spanNulls": false}}}
+    }
+  ]
+}

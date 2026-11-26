@@ -14,35 +14,7 @@ from app.main import app
 from app.schemas import CustomerInput
 
 
-CUSTOMER = {
-    "gender": "Female",
-    "SeniorCitizen": 0,
-    "Partner": "No",
-    "Dependents": "No",
-    "tenure": 2,
-    "PhoneService": "Yes",
-    "MultipleLines": "No",
-    "InternetService": "Fiber optic",
-    "OnlineSecurity": "No",
-    "OnlineBackup": "No",
-    "DeviceProtection": "No",
-    "TechSupport": "No",
-    "StreamingTV": "No",
-    "StreamingMovies": "No",
-    "Contract": "Month-to-month",
-    "PaperlessBilling": "Yes",
-    "PaymentMethod": "Electronic check",
-    "MonthlyCharges": 75.5,
-    "TotalCharges": 151.0,
-}
-
-
-@pytest.fixture
-def client():
-    with TestClient(app) as test_client:
-        yield test_client
-
-
+@pytest.mark.dvc
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -53,18 +25,19 @@ def test_health(client):
     assert readiness.json() == {"status": "ready"}
 
 
-def test_predict(client):
-    response = client.post("/predict", json=CUSTOMER)
+@pytest.mark.dvc
+def test_predict(client, sample_customer):
+    response = client.post("/predict", json=sample_customer)
     assert response.status_code == 200
     result = response.json()
     assert set(result) == {"prediction", "probability", "risk_level", "model_version", "request_id"}
     assert result["model_version"] == "ISTEA_Churn/1"
     assert result["request_id"] == response.headers["X-Request-ID"]
     assert UUID(result["request_id"]).version == 4
-    assert client.post("/predict", json=CUSTOMER).headers["X-Request-ID"] != result["request_id"]
+    assert client.post("/predict", json=sample_customer).headers["X-Request-ID"] != result["request_id"]
 
     pipeline = joblib.load(loader.MODEL_PATH)
-    features = pd.DataFrame([CUSTOMER])
+    features = pd.DataFrame([sample_customer])
     index = list(pipeline.classes_).index("Yes")
     assert result["prediction"] == pipeline.predict(features)[0]
     assert result["probability"] == pipeline.predict_proba(features)[0][index]
@@ -72,17 +45,11 @@ def test_predict(client):
     assert result["risk_level"] == risk_level(result["probability"])
 
 
-def test_predict_invalid(client):
-    response = client.post("/predict", json={})
+def test_predict_invalid(contract_client):
+    response = contract_client.post("/predict", json={})
     assert response.status_code == 422
     assert isinstance(response.json()["detail"], list)
     assert UUID(response.headers["X-Request-ID"]).version == 4
-
-
-def test_load_approved_model():
-    model, identity = loader.load_model()
-    assert identity == "ISTEA_Churn/1"
-    assert set(model.classes_) == {"No", "Yes"}
 
 
 def test_digest_mismatch_stops_before_deserialization(tmp_path, monkeypatch):
@@ -98,7 +65,15 @@ def test_digest_mismatch_stops_before_deserialization(tmp_path, monkeypatch):
         loader.load_model()
 
 
-def test_loader_rejects_unexpected_classes(monkeypatch):
+def test_loader_rejects_unexpected_classes(tmp_path, monkeypatch):
+    artifact = tmp_path / "model.joblib"
+    artifact.write_bytes(b"fixture model")
+    manifest = json.loads(loader.MANIFEST_PATH.read_text())
+    manifest["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(loader, "MANIFEST_PATH", path)
+    monkeypatch.setattr(loader, "MODEL_PATH", artifact)
     model = SimpleNamespace(
         predict=lambda features: ["No"],
         predict_proba=lambda features: [[1.0]],
@@ -111,7 +86,7 @@ def test_loader_rejects_unexpected_classes(monkeypatch):
 
 
 @pytest.mark.parametrize("state", ["missing", "wrong_hash", "corrupt", "incompatible"])
-def test_unavailable_model_preserves_liveness(state, tmp_path, monkeypatch):
+def test_unavailable_model_preserves_liveness(state, tmp_path, monkeypatch, sample_customer):
     artifact = tmp_path / "model.joblib"
     monkeypatch.setattr(loader, "MODEL_PATH", artifact)
     if state in ("wrong_hash", "corrupt"):
@@ -133,18 +108,18 @@ def test_unavailable_model_preserves_liveness(state, tmp_path, monkeypatch):
             response = test_client.get(endpoint)
             assert response.status_code == 503
             assert response.json() == {"status": status}
-        response = test_client.post("/predict", json=CUSTOMER)
+        response = test_client.post("/predict", json=sample_customer)
         assert response.status_code == 503
         assert response.json() == {"detail": "Model unavailable"}
         assert UUID(response.headers["X-Request-ID"]).version == 4
 
 
-def test_inference_exception_returns_generic_500(client, monkeypatch):
+def test_inference_exception_returns_generic_500(contract_client, sample_customer, monkeypatch):
     def fail(*args):
         raise RuntimeError("sensitive internal detail")
 
     monkeypatch.setattr(app.state.model, "predict", fail)
-    response = client.post("/predict", json=CUSTOMER)
+    response = contract_client.post("/predict", json=sample_customer)
     assert response.status_code == 500
     assert response.json() == {"detail": "Inference failed"}
     assert UUID(response.headers["X-Request-ID"]).version == 4
@@ -154,14 +129,14 @@ def test_inference_exception_returns_generic_500(client, monkeypatch):
     [0.8, float("nan")], [float("inf"), 0.2], [0.2, -0.1],
     [0.2, 1.1], [0.3, 0.3], [1.0],
 ])
-def test_invalid_model_probabilities_return_500(client, monkeypatch, probabilities):
+def test_invalid_model_probabilities_return_500(contract_client, sample_customer, monkeypatch, probabilities):
     monkeypatch.setattr(app.state.model, "predict_proba", lambda _: [probabilities])
-    response = client.post("/predict", json=CUSTOMER)
+    response = contract_client.post("/predict", json=sample_customer)
     assert response.status_code == 500
     assert response.json() == {"detail": "Inference failed"}
 
 
-def test_yes_probability_can_be_first():
+def test_yes_probability_can_be_first(sample_customer):
     class ReversedClasses:
         classes_ = ["Yes", "No"]
 
@@ -171,7 +146,7 @@ def test_yes_probability_can_be_first():
         def predict_proba(self, features):
             return [[0.75, 0.25]]
 
-    assert predict_churn(ReversedClasses(), CustomerInput(**CUSTOMER)) == {
+    assert predict_churn(ReversedClasses(), CustomerInput(**sample_customer)) == {
         "prediction": "Yes", "probability": 0.75, "risk_level": "HIGH",
     }
 

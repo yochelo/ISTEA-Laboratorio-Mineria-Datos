@@ -2,33 +2,16 @@ import json
 from unittest.mock import Mock
 
 import pytest
-from fastapi.testclient import TestClient
 
 import app.main as api
 
 
-# The professor's valid example, kept here so tests can run from a clean checkout.
-VALID_REQUEST = {
-    "gender": "Male",
-    "SeniorCitizen": 0,
-    "Partner": "No",
-    "Dependents": "No",
-    "tenure": 32,
-    "PhoneService": "Yes",
-    "MultipleLines": "No",
-    "InternetService": "Fiber optic",
-    "OnlineSecurity": "No",
-    "OnlineBackup": "Yes",
-    "DeviceProtection": "No",
-    "TechSupport": "No",
-    "StreamingTV": "Yes",
-    "StreamingMovies": "Yes",
-    "Contract": "Month-to-month",
-    "PaperlessBilling": "Yes",
-    "PaymentMethod": "Mailed check",
-    "MonthlyCharges": 101.35,
-    "TotalCharges": 2865.88,
-}
+CATEGORICAL_FIELDS = (
+    "gender", "Partner", "Dependents", "PhoneService", "MultipleLines",
+    "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection",
+    "TechSupport", "StreamingTV", "StreamingMovies", "Contract",
+    "PaperlessBilling", "PaymentMethod",
+)
 
 INTERNET_FIELDS = (
     "OnlineSecurity", "OnlineBackup", "DeviceProtection",
@@ -39,26 +22,22 @@ NO_INTERNET = {
 }
 
 
-@pytest.fixture
-def client():
-    with TestClient(api.app) as test_client:
-        yield test_client
-
-
+@pytest.mark.dvc
 @pytest.mark.parametrize("changes", [
     {},
     {"SeniorCitizen": 1, "tenure": 72, "MonthlyCharges": 130, "TotalCharges": 0},
     {"tenure": 0, "MonthlyCharges": 1, "TotalCharges": None},
     {"PhoneService": "No", "MultipleLines": "No phone service", **NO_INTERNET},
 ])
-def test_valid_requests_predict(client, changes):
-    response = client.post("/predict", json=VALID_REQUEST | changes)
+def test_valid_requests_predict(client, sample_customer, changes):
+    response = client.post("/predict", json=sample_customer | changes)
     assert response.status_code == 200
     assert 0 <= response.json()["probability"] <= 1
 
 
-def test_total_charges_can_be_omitted(client):
-    payload = {field: value for field, value in VALID_REQUEST.items() if field != "TotalCharges"}
+@pytest.mark.dvc
+def test_total_charges_can_be_omitted(client, sample_customer):
+    payload = {field: value for field, value in sample_customer.items() if field != "TotalCharges"}
     explicit_null = client.post("/predict", json=payload | {"TotalCharges": None})
     omitted = client.post("/predict", json=payload)
     assert explicit_null.status_code == omitted.status_code == 200
@@ -72,8 +51,7 @@ def test_total_charges_can_be_omitted(client):
 @pytest.mark.parametrize(("changes", "expected"), [
     ({"tenure": -12, "Contract": "Weekly", "MonthlyCharges": "not-a-number"},
      {"tenure", "Contract", "MonthlyCharges"}),
-    *[({field: "Unknown"}, {field}) for field in VALID_REQUEST
-      if isinstance(VALID_REQUEST[field], str)],
+    *[({field: "Unknown"}, {field}) for field in CATEGORICAL_FIELDS],
     ({"SeniorCitizen": -1}, {"SeniorCitizen"}),
     ({"SeniorCitizen": 2}, {"SeniorCitizen"}),
     ({"SeniorCitizen": True}, {"SeniorCitizen"}),
@@ -92,11 +70,11 @@ def test_total_charges_can_be_omitted(client):
     *[({field: value}, {field}) for field in ("MonthlyCharges", "TotalCharges")
       for value in (float("nan"), float("inf"), float("-inf"))],
 ])
-def test_invalid_fields_stop_before_inference(client, monkeypatch, changes, expected):
+def test_invalid_fields_stop_before_inference(contract_client, sample_customer, monkeypatch, changes, expected):
     inference = Mock()
     monkeypatch.setattr(api, "predict_churn", inference)
-    response = client.post(
-        "/predict", content=json.dumps(VALID_REQUEST | changes),
+    response = contract_client.post(
+        "/predict", content=json.dumps(sample_customer | changes),
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
@@ -110,10 +88,10 @@ def test_invalid_fields_stop_before_inference(client, monkeypatch, changes, expe
     *[({field: "No internet service"}, field) for field in INTERNET_FIELDS],
     *[(NO_INTERNET | {field: "No"}, field) for field in INTERNET_FIELDS],
 ])
-def test_inconsistent_services_stop_before_inference(client, monkeypatch, changes, field):
+def test_inconsistent_services_stop_before_inference(contract_client, sample_customer, monkeypatch, changes, field):
     inference = Mock()
     monkeypatch.setattr(api, "predict_churn", inference)
-    response = client.post("/predict", json=VALID_REQUEST | changes)
+    response = contract_client.post("/predict", json=sample_customer | changes)
     assert response.status_code == 422
     error, = response.json()["detail"]
     assert error["loc"] == ["body"]
@@ -121,13 +99,13 @@ def test_inconsistent_services_stop_before_inference(client, monkeypatch, change
     inference.assert_not_called()
 
 
-def test_openapi_describes_customer_input(client):
-    spec = client.get("/openapi.json").json()
+def test_openapi_describes_customer_input(contract_client, sample_customer):
+    spec = contract_client.get("/openapi.json").json()
     schema = spec["components"]["schemas"]["CustomerInput"]
     properties = schema["properties"]
     assert schema["additionalProperties"] is False
-    assert set(schema["required"]) == set(VALID_REQUEST) - {"TotalCharges"}
-    for name, value in VALID_REQUEST.items():
+    assert set(schema["required"]) == set(sample_customer) - {"TotalCharges"}
+    for name, value in sample_customer.items():
         if isinstance(value, str):
             assert properties[name]["type"] == "string"
             assert value in properties[name]["enum"]

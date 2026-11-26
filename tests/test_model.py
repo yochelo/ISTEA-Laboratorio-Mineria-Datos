@@ -1,15 +1,12 @@
-import joblib
+import pytest
 
-from src.data.load_data import load_data
+from app.model_loader import load_model
+from app.schemas import CustomerInput
 
 
-def test_model_prediction():
-    model = joblib.load("models/churn_model.joblib")
-
-    df = load_data("data/raw/customer_churn_historical.csv")
-    X = df.drop(columns=["customerID", "Churn"])
-
-    predictions = model.predict(X.head(5))
-
-    assert len(predictions) == 5
-    assert set(predictions).issubset({"Yes", "No"})
+@pytest.mark.dvc
+def test_load_approved_model():
+    model, identity = load_model()
+    assert identity == "ISTEA_Churn/1"
+    assert set(model.classes_) == {"No", "Yes"}
+    assert set(model.feature_names_in_) == set(CustomerInput.model_fields)

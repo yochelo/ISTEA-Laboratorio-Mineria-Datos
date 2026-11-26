@@ -43,7 +43,7 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 - **Criterio de evaluación.** El artefacto aprobado reproduce la predicción directa. Un archivo con digest distinto se rechaza antes de deserializarse. Un artefacto ausente, corrupto o incompatible deja el HTTP operativo y devuelve 503 en readiness y predicción válida.
 - **Resultado observado.** La prueba de integración reprodujo etiqueta y probabilidad del pipeline directo. Las pruebas de fallo confirmaron 503 sin cargar otro modelo. Un fallo inesperado de inferencia produjo 500 genérico y se pudo correlacionar con el identificador de solicitud.
 - **Evidencia.** [Manifiesto](../app/model_manifest.json), [carga del modelo](../app/model_loader.py), [ciclo de vida y rutas](../app/main.py) y [pruebas](../tests/test_api.py).
-- **Limitaciones.** Readiness refleja la verificación de carga durante el arranque. Cada cambio de modelo exige actualizar de forma coordinada el artefacto y su manifiesto. La prueba de identidad se ejecutó en FastAPI local. La verificación en contenedor queda para una subetapa posterior.
+- **Limitaciones.** Readiness refleja la verificación de carga durante el arranque. Cada cambio de modelo exige actualizar de forma coordinada el artefacto y su manifiesto. La identidad se verificó en FastAPI local y posteriormente dentro del contenedor de la Etapa 3A.
 
 ## DT-005 · Contrato de entrada de FastAPI · 2026-11-25
 
@@ -70,3 +70,12 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 - **Resultado observado.** La suite completa aprobó en el orden habitual y en el orden inverso de los casos recolectados. Los grupos `-m dvc` y `-m "not dvc"` aprobaron en ejecuciones separadas. El segundo se ejecutó en una copia sin CSV histórico, modelo ni caché DVC. El smoke test también aprobó de forma aislada. Compara la etiqueta y la probabilidad de `Yes` por HTTP con las del pipeline directo y verifica identidad y UUID.
 - **Evidencia.** [Configuración pytest](../pytest.ini), [fixtures](../tests/conftest.py), [esquema de datos](../tests/test_load_data.py), [imputación](../tests/test_preprocessor.py), [modelo](../tests/test_model.py), [API](../tests/test_api.py) y [validación parametrizada](../tests/test_input_validation.py).
 - **Limitación.** Starlette 1.10.0 intenta usar `httpx2` y emite una advertencia cuando usa el `httpx` 0.28.1 instalado. Adoptar `httpx2` requiere revisar las dependencias. La advertencia permanece visible. El smoke test usa ASGI en proceso mediante `TestClient`. La ejecución en contenedor se verificará por separado.
+
+## DT-008 · Imagen de serving · 2026-11-26
+
+- **Contexto.** El Dockerfile de la segunda entrega instalaba también herramientas de entrenamiento y pruebas. La imagen definitiva necesita FastAPI, el manifiesto y el pipeline local aprobado.
+- **Decisión adoptada.** Conservar un Dockerfile de una sola etapa con Python oficial 3.11.9 slim por digest, dependencias de serving fijadas, usuario sin privilegios y healthcheck sobre `/ready`. Limitar el contexto a los archivos que requiere la imagen. El modelo se incorpora desde el checkout tras recuperarlo por DVC.
+- **Criterio de evaluación.** La imagen arranca en Linux, verifica el hash del modelo y responde correctamente a los ejemplos oficiales. La predicción debe coincidir con el pipeline local y funcionar también con la red deshabilitada.
+- **Resultado observado.** La imagen local `istea-churn-api:etapa-3a-modelo-1` quedó saludable. Las rutas de salud, documentación y predicción válida devolvieron 200. La solicitud inválida devolvió 422. La identidad y el UUID coincidieron con el contrato, y la diferencia de probabilidad respecto del pipeline local fue cero. El `joblib` conservó el SHA-256 aprobado. Una segunda ejecución con `--network none`, sin credenciales ni montajes, también predijo correctamente.
+- **Evidencia.** [Dockerfile](../Dockerfile), [contexto de construcción](../.dockerignore), [dependencias de serving](../requirements-serving.txt) e ID de imagen `sha256:10b1f8ae1fcfdbf382d231c172ed92d7d9eab9b7fc17cf2526e7e903f1cbc522`.
+- **Limitaciones.** Se verificó Linux AMD64 en Docker Desktop. Construir desde un checkout nuevo requiere recuperar primero el modelo y disponer de la imagen base y los paquetes. La prueba sin red cubrió el arranque y la predicción del servicio.

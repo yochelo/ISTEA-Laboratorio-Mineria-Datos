@@ -1,17 +1,8 @@
-
-.venv/
-.git/
-.dvc/
-.pytest_cache/
-__pycache__/
-*.pyc
-
-mlruns/
-mlflow.db
-
-data/
-notebooks/
-reports/
-tests/
-
-.env
+# Only files used to build the serving image enter the context.
+**
+!requirements-serving.txt
+!app/
+!app/*.py
+!app/model_manifest.json
+!models/
+!models/churn_model.joblib

@@ -280,3 +280,11 @@ La suite completa usa el CSV histórico y `models/churn_model.joblib`. El target
 En el futuro runner Linux se deben validar las ruedas de Python 3.11, el acceso de red a DagsHub y el arranque del contenedor. Git conserva CRLF en `requirements.txt` y en los cuatro módulos Python que DVC registra como dependencias de `train`. El build y la publicación versionada en GHCR deben depender del éxito de pytest. Las pruebas HTTP de CI deberán usar datos disponibles en el checkout, por ejemplo el caso válido empleado por la suite. El directorio externo del profesor está disponible en este laboratorio Windows.
 
 Para la etapa de publicación, usar una etiqueta vinculada al SHA de Git y reservar `GITHUB_TOKEN` con `packages: write` para el job de publicación. El checkout requiere `contents: read`. [Publicación de imágenes con GitHub Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
+
+### Integración continua en GitHub Actions
+
+El [workflow de integración continua](.github/workflows/ci.yml) se activa con un push a `entrega-final`. En Ubuntu 24.04 instala Python 3.11.9, recupera los cuatro artefactos de DVC y verifica la huella del modelo y el estado del pipeline. Pytest y las verificaciones de Prometheus deben aprobar para que empiece el build. El último paso prueba por HTTP los ejemplos del profesor con el contenedor construido y lo retira al terminar.
+
+Antes del primer push, abrir **Settings → Secrets and variables → Actions → New repository secret**. Crear `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY` con las credenciales existentes que dan acceso de lectura al remoto DagsHub. Las credenciales se exponen únicamente a `dvc pull`. El smoke test admite una diferencia absoluta de `1e-12` en la probabilidad para tolerar redondeo de punto flotante entre plataformas.
+
+El YAML declara `workflow_dispatch`. GitHub habilita el evento cuando el archivo está en la rama predeterminada. Mientras `main` conserve la segunda entrega, usar el disparador por push de `entrega-final` y consultar el resultado en **Actions**. [Requisito de la rama predeterminada](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch)

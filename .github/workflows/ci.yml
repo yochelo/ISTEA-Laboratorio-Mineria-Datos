@@ -1,0 +1,75 @@
+name: Integración continua de churn
+
+on:
+  push:
+    branches: [entrega-final]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Verificar y construir la API
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      DVC_NO_ANALYTICS: "true"
+      MODELO_SHA256: be71d167d616f72260f4b04181971c6b76ff9f8a86cd20d32bbf7991eee7937e
+    steps:
+      - name: Recuperar el repositorio
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.9"
+
+      - name: Instalar y comprobar dependencias
+        run: |
+          python -m pip install -r requirements-ci.txt
+          python -m pip check
+
+      - name: Recuperar los artefactos aprobados de DagsHub
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DAGSHUB_DVC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DAGSHUB_DVC_SECRET_ACCESS_KEY }}
+        run: |
+          if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" ]]; then
+            echo "::error::Configurar los dos secretos DVC de DagsHub en GitHub Actions."
+            exit 1
+          fi
+          dvc pull -r origin data/raw/customer_churn_historical.csv.dvc train data/production/customer_churn_current.csv.dvc
+
+      - name: Verificar integridad del modelo y estado de DVC
+        run: |
+          printf '%s  %s\n' "$MODELO_SHA256" models/churn_model.joblib | sha256sum --check
+          estado="$(dvc status --json)"
+          printf '%s\n' "$estado"
+          test "$estado" = '{}'
+
+      - name: Ejecutar la suite completa de pytest
+        run: python -m pytest -q
+
+      - name: Validar la configuración y las alertas de Prometheus
+        run: |
+          docker run --rm --network none -v "$PWD/prometheus:/etc/prometheus:ro" \
+            --entrypoint /bin/promtool prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --network none -v "$PWD/prometheus:/etc/prometheus:ro" \
+            --entrypoint /bin/promtool prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
+
+      - name: Construir la imagen Docker
+        run: docker build --progress=plain -t istea-churn-api:ci .
+
+      - name: Verificar la API por HTTP
+        run: |
+          contenedor="$(docker run --rm -d -p 127.0.0.1::8000 istea-churn-api:ci)"
+          trap 'docker stop "$contenedor" >/dev/null' EXIT
+          puerto="$(docker port "$contenedor" 8000/tcp)"
+          docker exec "$contenedor" sha256sum /app/models/churn_model.joblib \
+            | grep -Fx "$MODELO_SHA256  /app/models/churn_model.joblib"
+          python tests/smoke_http.py "http://$puerto"

@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,28 +10,8 @@ import app.main as api
 
 @pytest.fixture
 def sample_customer():
-    # Official valid example. Each test can change its own copy.
-    return {
-        "gender": "Male",
-        "SeniorCitizen": 0,
-        "Partner": "No",
-        "Dependents": "No",
-        "tenure": 32,
-        "PhoneService": "Yes",
-        "MultipleLines": "No",
-        "InternetService": "Fiber optic",
-        "OnlineSecurity": "No",
-        "OnlineBackup": "Yes",
-        "DeviceProtection": "No",
-        "TechSupport": "No",
-        "StreamingTV": "Yes",
-        "StreamingMovies": "Yes",
-        "Contract": "Month-to-month",
-        "PaperlessBilling": "Yes",
-        "PaymentMethod": "Mailed check",
-        "MonthlyCharges": 101.35,
-        "TotalCharges": 2865.88,
-    }
+    example = Path(__file__).with_name("fixtures") / "predict_request_valid.json"
+    return json.loads(example.read_text(encoding="utf-8"))
 
 
 @pytest.fixture

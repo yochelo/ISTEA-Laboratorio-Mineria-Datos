@@ -62,7 +62,11 @@ def test_total_charges_can_be_omitted(client):
     explicit_null = client.post("/predict", json=payload | {"TotalCharges": None})
     omitted = client.post("/predict", json=payload)
     assert explicit_null.status_code == omitted.status_code == 200
-    assert explicit_null.json() == omitted.json()
+    explicit_result, omitted_result = explicit_null.json(), omitted.json()
+    assert explicit_result.pop("request_id") == explicit_null.headers["X-Request-ID"]
+    assert omitted_result.pop("request_id") == omitted.headers["X-Request-ID"]
+    assert explicit_null.headers["X-Request-ID"] != omitted.headers["X-Request-ID"]
+    assert explicit_result == omitted_result
 
 
 @pytest.mark.parametrize(("changes", "expected"), [

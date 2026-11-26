@@ -39,11 +39,11 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 ## DT-004 · Identidad del modelo servido · 2026-11-25
 
 - **Contexto.** FastAPI carga un archivo local y expone una versión fija. Sustituir el archivo puede mantener la misma versión declarada.
-- **Propuesta de diseño.** Conservar la carga local y acompañarla con un manifiesto que declare la versión exacta del Registry y el SHA-256 esperado. Verificar el digest antes de deserializar y exponer la identidad verificada.
-- **Criterio de evaluación.** El artefacto correcto inicia el servicio y reproduce una predicción de referencia. Un archivo sustituido falla antes de deserializarse.
-- **Resultado observado.** La Etapa 0 confirmó que el modelo de la imagen existente coincide byte a byte con el local. La verificación al arranque queda pendiente de la subetapa de serving.
-- **Evidencia de partida.** [Carga del modelo](../app/model_loader.py), [versión declarada](../app/inference.py) y [empaquetado de la imagen](../Dockerfile).
-- **Trade-off.** El arranque puede funcionar sin conexión al Registry. Cada cambio de modelo exige actualizar de forma coordinada el artefacto y su manifiesto.
+- **Decisión adoptada.** Conservar la carga local. Un manifiesto declara la versión exacta del Registry, el run, el commit de entrenamiento y el SHA-256 esperado. El loader verifica los mismos bytes que deserializa y comprueba interfaz, clases y features. La API publica la identidad `ISTEA_Churn/1` desde el manifiesto.
+- **Criterio de evaluación.** El artefacto aprobado reproduce la predicción directa. Un archivo con digest distinto se rechaza antes de deserializarse. Un artefacto ausente, corrupto o incompatible deja el HTTP operativo y devuelve 503 en readiness y predicción válida.
+- **Resultado observado.** La prueba de integración reprodujo etiqueta y probabilidad del pipeline directo. Las pruebas de fallo confirmaron 503 sin cargar otro modelo. Un fallo inesperado de inferencia produjo 500 genérico y se pudo correlacionar con el identificador de solicitud.
+- **Evidencia.** [Manifiesto](../app/model_manifest.json), [carga del modelo](../app/model_loader.py), [ciclo de vida y rutas](../app/main.py) y [pruebas](../tests/test_api.py).
+- **Limitaciones.** Readiness refleja la verificación de carga durante el arranque. Cada cambio de modelo exige actualizar de forma coordinada el artefacto y su manifiesto. La prueba de identidad se ejecutó en FastAPI local. La verificación en contenedor queda para una subetapa posterior.
 
 ## DT-005 · Contrato de entrada de FastAPI · 2026-11-25
 
@@ -54,3 +54,11 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 - **Resultado observado.** Validaron las 9.643 filas originales tras proyectarlas a las features de entrada y representar los faltantes como `null`. Los ejemplos oficiales conservaron sus resultados esperados y la suite completa aprobó. Para los errores de validación con valores no finitos, la respuesta conserva el formato `detail` y representa esos valores como texto para poder serializar el HTTP 422.
 - **Evidencia.** [Esquema Pydantic](../app/schemas.py), [respuesta de errores de validación](../app/main.py) y [pruebas HTTP y OpenAPI](../tests/test_input_validation.py).
 - **Limitación.** OpenAPI describe las reglas entre campos en texto. La aplicación las ejecuta mediante el validador Pydantic. La verificación por CSV fue una comprobación del contrato, sin ajustar el modelo ni utilizar producción simulada para selección.
+
+## DT-006 · Estados HTTP y niveles de riesgo · 2026-11-25
+
+- **Decisión adoptada.** Usar `/live` para liveness, `/ready` para disponibilidad del modelo y `/health` para estado general e identidad. Usar un UUID por solicitud y devolverlo en la cabecera `X-Request-ID` y en el cuerpo de las predicciones exitosas. Conservar el error 422 y separar indisponibilidad de modelo (503) de fallos inesperados de inferencia (500).
+- **Criterio de evaluación.** Comprobar los estados HTTP, la correspondencia del UUID, la búsqueda de la clase `Yes`, la validez de las probabilidades y los límites de riesgo.
+- **Resultado observado.** Sobre el holdout histórico, se asignaron 584 registros a LOW (38 churn), 523 a MEDIUM (149 churn) y 302 a HIGH (185 churn). Las pruebas confirmaron los bordes 0,30 y 0,70 y el rechazo de probabilidades inválidas mediante un 500 genérico.
+- **Limitación.** Los cortes 0,30 y 0,70 son ilustrativos para priorización. Las tasas observadas por nivel describen ese holdout. La ponderación de clases modifica el ajuste y las probabilidades del modelo carecen de calibración verificada como riesgo absoluto.
+- **Evidencia.** [Inferencia y cortes](../app/inference.py), [respuestas HTTP](../app/main.py) y [pruebas de límites y fallos](../tests/test_api.py).

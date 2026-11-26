@@ -79,3 +79,9 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 - **Resultado observado.** La imagen local `istea-churn-api:etapa-3a-modelo-1` quedó saludable. Las rutas de salud, documentación y predicción válida devolvieron 200. La solicitud inválida devolvió 422. La identidad y el UUID coincidieron con el contrato, y la diferencia de probabilidad respecto del pipeline local fue cero. El `joblib` conservó el SHA-256 aprobado. Una segunda ejecución con `--network none`, sin credenciales ni montajes, también predijo correctamente.
 - **Evidencia.** [Dockerfile](../Dockerfile), [contexto de construcción](../.dockerignore), [dependencias de serving](../requirements-serving.txt) e ID de imagen `sha256:10b1f8ae1fcfdbf382d231c172ed92d7d9eab9b7fc17cf2526e7e903f1cbc522`.
 - **Limitaciones.** Se verificó Linux AMD64 en Docker Desktop. Construir desde un checkout nuevo requiere recuperar primero el modelo y disponer de la imagen base y los paquetes. La prueba sin red cubrió el arranque y la predicción del servicio.
+
+## DT-009 · Arranque declarativo con Compose · 2026-11-26
+
+- **Decisión adoptada.** Mantener un único servicio `churn-api` con la imagen aprobada para `ISTEA_Churn/1`, la red implícita, el puerto histórico limitado a `127.0.0.1:8001` y `restart: unless-stopped`. El healthcheck se hereda del Dockerfile.
+- **Resultado observado.** `docker compose config` resolvió la configuración esperada. El primer arranque llegó a `healthy`. Los endpoints de salud y Swagger respondieron 200. La predicción válida coincidió con el pipeline local, incluida la identidad y la correspondencia del UUID con la cabecera. El ejemplo inválido devolvió 422. Tras `down`, el segundo arranque reutilizó el mismo ID de imagen sin build y volvió a quedar saludable.
+- **Alcance.** La verificación se hizo en Docker Desktop desde el host local. Al finalizar se retiraron el contenedor y la red propia del proyecto. [Configuración Compose](../compose.yaml)

@@ -2,7 +2,7 @@
 services:
   churn-api:
     build: .
-    image: istea-churn-api:1.0
+    image: istea-churn-api:etapa-3a-modelo-1
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     restart: unless-stopped

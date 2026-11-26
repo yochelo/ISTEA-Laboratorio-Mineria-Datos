@@ -290,3 +290,13 @@ Antes del primer push, abrir **Settings → Secrets and variables → Actions �
 El YAML declara `workflow_dispatch`. GitHub habilita el evento cuando el archivo está en la rama predeterminada. Mientras `main` conserve la segunda entrega, usar el disparador por push de `entrega-final` y consultar el resultado en **Actions**. [Requisito de la rama predeterminada](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch)
 
 La primera ejecución por push a `entrega-final` aprobó la recuperación DVC, las 90 pruebas, promtool, el build y el smoke test de `ISTEA_Churn/1`. [Ejecución de GitHub Actions](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45897092423)
+
+### Imagen candidata en GHCR
+
+El workflow publica la imagen que aprobó el smoke test y usa un segundo runner para descargarla por digest y repetir la comprobación. La candidata pública verificada corresponde a `sha-1e3ab250c3c29d52ee723a5b533fc1f4cc2d3179`. Su manifiesto admite descarga anónima.
+
+```bash
+docker pull ghcr.io/yochelo/istea-laboratorio-mineria-datos@sha256:bb4533c45d25fe198ab5495a60904c469a36fc1dc339ce45fe59268408864079
+```
+
+[Paquete GHCR](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/pkgs/container/istea-laboratorio-mineria-datos) · [Ejecución aprobada](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45899392635)

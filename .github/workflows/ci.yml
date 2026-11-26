@@ -8,16 +8,24 @@ on:
 permissions:
   contents: read
 
+env:
+  MODELO_SHA256: be71d167d616f72260f4b04181971c6b76ff9f8a86cd20d32bbf7991eee7937e
+  PAQUETE: ghcr.io/yochelo/istea-laboratorio-mineria-datos
+
 jobs:
   verificar:
-    name: Verificar y construir la API
+    name: Verificar, construir y publicar la API
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.publicar.outputs.digest }}
     defaults:
       run:
         shell: bash
     env:
       DVC_NO_ANALYTICS: "true"
-      MODELO_SHA256: be71d167d616f72260f4b04181971c6b76ff9f8a86cd20d32bbf7991eee7937e
     steps:
       - name: Recuperar el repositorio
         uses: actions/checkout@v6.0.2
@@ -63,13 +71,79 @@ jobs:
             --entrypoint /bin/promtool prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
 
       - name: Construir la imagen Docker
-        run: docker build --progress=plain -t istea-churn-api:ci .
+        run: |
+          docker build --progress=plain \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            -t "$PAQUETE:sha-$GITHUB_SHA" .
 
       - name: Verificar la API por HTTP
+        run: bash tests/smoke_docker.sh "$PAQUETE:sha-$GITHUB_SHA"
+
+      - name: Publicar la imagen validada en GHCR
+        id: publicar
+        if: github.ref == 'refs/heads/entrega-final'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          contenedor="$(docker run --rm -d -p 127.0.0.1::8000 istea-churn-api:ci)"
-          trap 'docker stop "$contenedor" >/dev/null' EXIT
-          puerto="$(docker port "$contenedor" 8000/tcp)"
-          docker exec "$contenedor" sha256sum /app/models/churn_model.joblib \
-            | grep -Fx "$MODELO_SHA256  /app/models/churn_model.joblib"
-          python tests/smoke_http.py "http://$puerto"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          registro="$(docker push "$PAQUETE:sha-$GITHUB_SHA")"
+          printf '%s\n' "$registro"
+          digest="$(awk '$2 == "digest:" {print $3}' <<< "$registro")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+  verificar_ghcr:
+    name: Descargar y verificar la imagen de GHCR
+    needs: verificar
+    if: github.ref == 'refs/heads/entrega-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      DIGEST: ${{ needs.verificar.outputs.digest }}
+    steps:
+      - name: Recuperar el smoke test y sus ejemplos
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.9"
+
+      - name: Descargar la imagen por digest
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          docker pull "$PAQUETE@$DIGEST"
+
+      - name: Verificar procedencia y contenido de la imagen descargada
+        run: |
+          imagen="$PAQUETE@$DIGEST"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' "$imagen")" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$imagen")" = "$GITHUB_SHA"
+          docker run --rm --network none --entrypoint find "$imagen" /app -type f > "$RUNNER_TEMP/contenido-imagen"
+          sort -o "$RUNNER_TEMP/contenido-imagen" "$RUNNER_TEMP/contenido-imagen"
+          { git ls-files 'app/*.py' app/model_manifest.json requirements-serving.txt
+            printf '%s\n' models/churn_model.joblib
+          } | sed 's|^|/app/|' | sort > "$RUNNER_TEMP/contenido-esperado"
+          diff -u "$RUNNER_TEMP/contenido-esperado" "$RUNNER_TEMP/contenido-imagen"
+          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$imagen" \
+            | cut -d= -f1 | sed '/^$/d' > "$RUNNER_TEMP/variables-imagen"
+          if grep -Ei 'SECRET|PASSWORD|TOKEN|CREDENTIAL|API_KEY|^AWS_|^DAGSHUB_|^MLFLOW_' "$RUNNER_TEMP/variables-imagen"; then
+            exit 1
+          fi
+          printf 'Contenido de aplicación y configuración de entorno verificados.\n'
+
+      - name: Verificar el modelo y la API descargada por HTTP
+        run: bash tests/smoke_docker.sh "$PAQUETE@$DIGEST"

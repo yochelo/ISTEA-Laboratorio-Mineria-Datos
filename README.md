@@ -230,3 +230,20 @@ El análisis exploratorio inicial se encuentra en `notebooks/01_eda.ipynb`. El f
 ## Tecnologías utilizadas
 
 Python, pandas, scikit-learn, joblib, pytest, FastAPI, Uvicorn, MLflow, Docker, Docker Compose, Git/GitHub, DVC y DagsHub.
+
+## Calidad de datos y drift
+
+Desde la raíz del repositorio, preparar un entorno Python 3.11 independiente. El siguiente ejemplo es para PowerShell y presupone que `python` apunta a Python 3.11.
+
+```powershell
+$monitoringEnv = Join-Path $env:LOCALAPPDATA 'istea-churn-monitoring-venv'
+python -m venv $monitoringEnv
+$monitoringPython = Join-Path $monitoringEnv 'Scripts/python.exe'
+& $monitoringPython -m pip install -r monitoring/requirements.txt
+$env:EVIDENTLY_DISABLE_TELEMETRY = '1'
+& $monitoringPython -m monitoring.drift_report
+```
+
+El análisis requiere los CSV históricos y de producción en las rutas declaradas por sus punteros DVC. Si el CSV de producción todavía no está en el remoto, puede materializarse con `dvc checkout data/production/customer_churn_current.csv.dvc` desde una caché que tenga el objeto. También puede recuperarse del paquete original del profesor y comprobarse contra su checksum.
+
+Abrir `reports/drift_report.html` en el navegador. En el mismo directorio quedan `drift_report.json` con el resultado nativo de Evidently y `drift_provenance.json` con hashes, partición y modelo de referencia. Los tres archivos se regeneran al ejecutar el análisis. El lote de producción carece de etiquetas de churn.

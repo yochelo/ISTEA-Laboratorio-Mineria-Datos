@@ -7,33 +7,75 @@ stages:
       hash: md5
       md5: 178571792c566f067e3d16b5fb913026
       size: 982638
+    - path: requirements.txt
+      hash: md5
+      md5: 0649fa7e1a904ba60fb13f2069ab79bf
+      size: 265
     - path: src/data/load_data.py
       hash: md5
       md5: 683a845416a44bcb855ec586987b39af
       size: 126
     - path: src/evaluation/evaluate.py
       hash: md5
-      md5: b0661e6243cb84a31fee522b6287f09c
-      size: 664
+      md5: 79a2f7e0b89988caeb3a7854f7c81ae1
+      size: 1190
     - path: src/features/build_preprocessor.py
       hash: md5
       md5: 3e20c2577418aeb834b53cc3bcb6f057
       size: 1309
     - path: src/training/train.py
       hash: md5
-      md5: 5d3e64919bb7d52030cfb0e27b48c767
-      size: 2561
+      md5: a6864cb6ab4c34f5ec881afeeaa5f9a0
+      size: 7203
     params:
       params.yaml:
-        model.logistic_regression.max_iter: 1000
-        split.random_state: 42
-        split.test_size: 0.2
+        candidates:
+        - name: baseline
+          family: dummy
+          parameters:
+            strategy: most_frequent
+        - name: logistic
+          family: logistic_regression
+          parameters:
+            C: 1.0
+            max_iter: 1000
+        - name: logistic_balanced
+          family: logistic_regression
+          parameters:
+            C: 1.0
+            max_iter: 1000
+            class_weight: balanced
+        - name: logistic_balanced_regularized
+          family: logistic_regression
+          parameters:
+            C: 0.1
+            max_iter: 1000
+            class_weight: balanced
+        - name: random_forest
+          family: random_forest
+          parameters:
+            n_estimators: 100
+            random_state: 42
+        - name: random_forest_balanced
+          family: random_forest
+          parameters:
+            n_estimators: 100
+            random_state: 42
+            class_weight: balanced
+        selection:
+          min_precision: 0.5
+        split:
+          test_size: 0.2
+          random_state: 42
+        validation:
+          n_splits: 5
+          random_state: 42
     outs:
     - path: models/churn_model.joblib
       hash: md5
-      md5: 23acceff5e35422ec94895f942b4a07b
-      size: 8714
+      md5: 076e795f0fa0fe839930e3103b62dc32
+      size: 8730
     - path: reports/metrics.json
       hash: md5
-      md5: 6c0867e192185d6c3175038351472ed0
-      size: 132
+      md5: 27f0d2c42ace73de18f284dbf1769c8b
+      size: 295

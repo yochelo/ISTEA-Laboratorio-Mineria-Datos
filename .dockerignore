@@ -2,7 +2,9 @@
 **
 !requirements-serving.txt
 !app/
+app/**
 !app/*.py
 !app/model_manifest.json
 !models/
+models/**
 !models/churn_model.joblib

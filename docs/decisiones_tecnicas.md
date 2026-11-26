@@ -44,3 +44,13 @@ Registro del proyecto ISTEA Laboratorio de Minería de Datos. Recoge el diseño 
 - **Resultado observado.** La Etapa 0 confirmó que el modelo de la imagen existente coincide byte a byte con el local. La verificación al arranque queda pendiente de la subetapa de serving.
 - **Evidencia de partida.** [Carga del modelo](../app/model_loader.py), [versión declarada](../app/inference.py) y [empaquetado de la imagen](../Dockerfile).
 - **Trade-off.** El arranque puede funcionar sin conexión al Registry. Cada cambio de modelo exige actualizar de forma coordinada el artefacto y su manifiesto.
+
+## DT-005 · Contrato de entrada de FastAPI · 2026-11-25
+
+- **Contexto.** La segunda entrega aceptaba categorías desconocidas, coerciones numéricas y combinaciones incompatibles de servicios. La Etapa 2A contrastó el diccionario, el esquema y los ejemplos del profesor con los CSV originales.
+- **Decisión adoptada.** Usar Pydantic v2 en modo estricto, con dominios explícitos y campos adicionales prohibidos. Exigir `SeniorCitizen` entero entre 0 y 1, `tenure` entero entre 0 y 72 y cargos finitos. El cargo mensual debe ser positivo. El total admite cero, omisión o `null`, y el pipeline conserva su imputación. Las cuatro formas de pago se tomaron de los CSV originales, ya que el diccionario solo indica la cantidad.
+- **Fundamento.** Los tres CSV cumplen las correspondencias entre telefonía y líneas, y entre ausencia de internet y los seis servicios asociados. El contrato comprueba ambas direcciones de esas correspondencias. El rango aproximado de cargos mensuales queda como referencia descriptiva.
+- **Criterio de evaluación.** Los ejemplos oficiales producen HTTP 200 y 422 según corresponda. Tipos, dominios y combinaciones inválidas producen 422 antes de inferencia, incluso cuando el decodificador recibe números no finitos. OpenAPI expone los dominios y límites y describe la coherencia entre servicios.
+- **Resultado observado.** Validaron las 9.643 filas originales tras proyectarlas a las features de entrada y representar los faltantes como `null`. Los ejemplos oficiales conservaron sus resultados esperados y la suite completa aprobó. Para los errores de validación con valores no finitos, la respuesta conserva el formato `detail` y representa esos valores como texto para poder serializar el HTTP 422.
+- **Evidencia.** [Esquema Pydantic](../app/schemas.py), [respuesta de errores de validación](../app/main.py) y [pruebas HTTP y OpenAPI](../tests/test_input_validation.py).
+- **Limitación.** OpenAPI describe las reglas entre campos en texto. La aplicación las ejecuta mediante el validador Pydantic. La verificación por CSV fue una comprobación del contrato, sin ajustar el modelo ni utilizar producción simulada para selección.

@@ -1,302 +1,100 @@
-# Predicción de Churn de Clientes
+# Predicción de abandono de clientes
 
-Proyecto desarrollado para la materia **Laboratorio de Minería de Datos** (ISTEA).
+Proyecto académico de Laboratorio de Minería de Datos de ISTEA. El servicio estima el riesgo de abandono de un cliente de telecomunicaciones para ayudar a priorizar acciones de retención. La decisión sobre cómo contactar o asistir al cliente requiere criterio humano.
 
-El objetivo es construir un flujo reproducible de análisis, entrenamiento y evaluación de modelos de clasificación para predecir la baja de clientes (*churn*), y exponer el modelo seleccionado mediante una API REST.
+## Arquitectura
 
-## Estructura del proyecto
+El histórico y los artefactos se versionan con DVC en DagsHub. El entrenamiento y la evaluación del modelo se realizan con Scikit-learn, utilizando el código versionado en Git. MLflow registra los experimentos y la versión aprobada. FastAPI carga una copia local verificada del modelo, incluida en la imagen Docker. GitHub Actions comprueba el proyecto antes de publicar en GHCR. En el despliegue, Prometheus recolecta métricas de la API y Grafana las visualiza. Evidently compara lotes de datos por separado
 
-- `data/`: datos históricos del proyecto, versionados con DVC.
-- `notebooks/`: análisis exploratorio inicial.
-- `src/data/`: carga de datos.
-- `src/features/`: preprocesamiento de variables.
-- `src/training/`: entrenamiento y comparación de modelos.
-- `src/evaluation/`: evaluación de modelos.
-- `models/`: modelo entrenado seleccionado.
-- `reports/`: métricas del pipeline.
-- `tests/`: pruebas automáticas del procesamiento, modelo y API.
-- `app/`: aplicación FastAPI, validación de entradas e inferencia.
-- `Dockerfile`, `.dockerignore`, `compose.yaml`: ejecución en contenedor.
+## Datos y modelo
 
-## Requisitos
+- **Histórico:** 7.043 registros, con 19 predictores, `customerID` y la etiqueta `Churn`. Se usa para entrenamiento y evaluación.
+- **Producción simulada:** 2.500 registros sin `Churn`, reservados para monitoreo. El lote de scoring del profesor se reserva para pruebas de inferencia.
+- **Selección:** se evaluaron seis configuraciones de baseline, regresión logística y Random Forest en cinco folds estratificados. Se eligió la regresión logística balanceada con `C=1` por su mayor recall medio entre las opciones con precisión media de al menos 0,50. En el holdout logró recall de 72,31 % y precisión de 48,12 %, con 103 falsos negativos y 290 falsos positivos.
+- **Justificación:** se priorizó el recall porque, para este problema, interesa detectar la mayor cantidad posible de clientes que podrían abandonar el servicio. En comparación con el modelo anterior, los falsos negativos disminuyeron de 204 a 103, aunque los falsos positivos aumentaron de 85 a 290. Esto permite detectar más casos de abandono, a cambio de contactar potencialmente a más clientes que no abandonarían el servicio.
 
-Para ejecutar el proyecto localmente:
+- **Registro:** [ISTEA_Churn/1](https://dagshub.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.mlflow/#/models/ISTEA_Churn/versions/1), vinculado al [run final](https://dagshub.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.mlflow/#/experiments/0/runs/778771c7af9e40dcb771cc5becfc9142). La API verifica el SHA-256 contra el [manifiesto del modelo](app/model_manifest.json) antes de cargarlo.
 
-- Python 3.11
-- Git
-- Dependencias indicadas en `requirements-ci.txt` para desarrollo y pruebas (incluido DVC)
+La [Model Card](docs/model_card.md) reúne la comparación completa, los límites del modelo y su uso recomendado.
 
-Para ejecutar la API mediante contenedores:
+## Desarrollo local
 
-- Docker con Docker Compose
+Requiere Git y Python 3.11.9.
 
-## Instalación local (Windows CMD)
+Clonar el repositorio desde Windows PowerShell:
 
-Clonar el repositorio e ingresar:
-
-```cmd
-git clone https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.git
+```powershell
+git clone -b entrega-final https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.git
 cd ISTEA-Laboratorio-Mineria-Datos
 ```
 
-Crear y activar el entorno virtual:
+Crear el entorno virtual e instalar las dependencias:
 
-```cmd
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
-```
-
-Instalar dependencias:
-
-```cmd
+.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-ci.txt
+python -m pip check
 ```
 
-## Obtener datos y modelo (DVC)
+Para acceder al remoto `origin` de DVC, usar las credenciales vigentes de DagsHub mediante `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY` en el entorno, o mediante la configuración local e ignorada de DVC. El servidor de MLflow se selecciona con `MLFLOW_TRACKING_URI`. Las credenciales de tracking se configuran en el entorno si se necesita consultar o registrar experimentos.
 
-Los datos y artefactos están versionados con DVC y almacenados en DagsHub. Se necesitan permisos de lectura y credenciales locales para acceder al almacenamiento remoto.
-
-Configurar un token personal de DagsHub en la configuración **local** de DVC (no incluir tokens reales en archivos versionados):
-
-```cmd
-dvc remote modify origin --local access_key_id TU_TOKEN
-dvc remote modify origin --local secret_access_key TU_TOKEN
-```
-
-Descargar los datos y artefactos:
-
-```cmd
-dvc pull -r origin
-```
-
-Esto permite disponer, entre otros archivos, de `models/churn_model.joblib`, necesario para iniciar la API. Las credenciales locales no deben subirse a GitHub.
-
-## Pipeline reproducible
-
-El pipeline se define en `dvc.yaml`. Para ejecutarlo:
-
-```cmd
-dvc repro
-```
-
-Entrena y evalúa los modelos a partir del dataset histórico y genera:
-
-- `models/churn_model.joblib`: pipeline de preprocesamiento y clasificación seleccionado.
-- `reports/metrics.json`: métricas de evaluación.
-
-Para consultar las métricas:
-
-```cmd
-dvc metrics show
-```
-
-Las métricas son accuracy, precision, recall y F1-score (para la clase `Yes`).
-
-## Modelo y experimentos
-
-Se compararon `DummyClassifier` (baseline), `LogisticRegression` y `RandomForestClassifier`. Se seleccionó **Logistic Regression** por su mejor recall para la clase `Yes` entre los modelos evaluados.
-
-El preprocesamiento y el clasificador se guardan juntos como un `Pipeline` de scikit-learn en `models/churn_model.joblib`.
-
-El entrenamiento registra parámetros y métricas en **MLflow**. Para visualizar los experimentos locales:
-
-```cmd
-mlflow ui --port 5000
-```
-
-Abrir http://localhost:5000. El modelo seleccionado se registró en el **Model Registry local** como `ISTEA_Churn_LogisticRegression` (versión 1).
-
-### Tracking y Model Registry remoto (DagsHub)
-
-El proyecto también registra experimentos en el servidor MLflow de DagsHub:
-
-https://dagshub.com/yochelo/ISTEA-Laboratorio-Mineria-Datos.mlflow/
-
-En el experimento remoto `ISTEA_Churn` se registraron tres ejecuciones (`Baseline`, `Logistic Regression` y `Random Forest`), con sus parámetros y métricas. El modelo `churn_pipeline` está vinculado a la ejecución de Logistic Regression y registrado en el **Model Registry remoto** como `ISTEA_Churn_LogisticRegression`, **versión 1**.
-
-Para enviar ejecuciones nuevas desde Python, se debe configurar `MLFLOW_TRACKING_URI` con la URL anterior y la autenticación de MLflow mediante `MLFLOW_TRACKING_USERNAME` y `MLFLOW_TRACKING_PASSWORD` en el entorno local, antes de entrenar. Se puede usar un token personal de DagsHub como contraseña. **No almacenar tokens ni credenciales en Git, archivos versionados o imágenes Docker.** Si no se configura el tracking remoto, MLflow utiliza su configuración local.
-
-La API actual carga el archivo `models/churn_model.joblib` recuperado con DVC. **Todavía no carga el modelo directamente desde el Registry remoto**, por lo que la versión registrada en DagsHub y el artefacto desplegado deben mantenerse coherentes.
-
-## API REST con FastAPI
-
-Con el entorno virtual activado y el modelo descargado, iniciar desde la raíz del proyecto:
-
-```cmd
+```powershell
+dvc pull -r origin data/raw/customer_churn_historical.csv.dvc train data/production/customer_churn_current.csv.dvc
+dvc status --json
+python -m pytest -q
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Endpoints disponibles:
+dvc pull descarga ambos CSV, el joblib y `reports/metrics.json`. La suite vigente tiene **90 pruebas aprobadas** en la ejecución de CI enlazada abajo. Con el modelo recuperado también se puede iniciar el stack de desarrollo con `docker compose up -d --build`. La API de ese stack usa `127.0.0.1:8001`.
 
-- `GET /health`: devuelve `{"status":"ok"}`.
-- `POST /predict`: recibe las características de un cliente validadas con Pydantic y devuelve `prediction` (`Yes` o `No`), `probability` (probabilidad estimada de `Yes`), `risk_level` (`LOW`, `MEDIUM`, `HIGH`) y `model_version` (identificador declarado de versión). La respuesta también se valida mediante Pydantic.
+El entrenamiento es un recorrido separado. `dvc repro train` puede ajustar el modelo y registrar nuevos runs cuando DVC detecta cambios. Para usar el artefacto aprobado alcanza con `dvc pull`. El [pipeline DVC](dvc.yaml), el [lock](dvc.lock) y los [parámetros](params.yaml) documentan la ejecución.
 
-Documentación interactiva Swagger: http://localhost:8000/docs
+### Contrato de la API
 
-Ejemplo de entrada para `POST /predict`:
+Swagger está en `/docs`. Para probar `POST /predict`, copiar en Swagger [el ejemplo válido](tests/fixtures/predict_request_valid.json) y [el inválido](tests/fixtures/predict_request_invalid.json). El primero devuelve HTTP 200 con `prediction`, `probability`, `risk_level`, `model_version` y `request_id`. El segundo devuelve HTTP 422. La cabecera `X-Request-ID` identifica ambas respuestas y permite buscar sus eventos en los logs.
 
-```json
-{
-  "gender": "Female",
-  "SeniorCitizen": 0,
-  "Partner": "No",
-  "Dependents": "No",
-  "tenure": 2,
-  "PhoneService": "Yes",
-  "MultipleLines": "No",
-  "InternetService": "Fiber optic",
-  "OnlineSecurity": "No",
-  "OnlineBackup": "No",
-  "DeviceProtection": "No",
-  "TechSupport": "No",
-  "StreamingTV": "No",
-  "StreamingMovies": "No",
-  "Contract": "Month-to-month",
-  "PaperlessBilling": "Yes",
-  "PaymentMethod": "Electronic check",
-  "MonthlyCharges": 75.5,
-  "TotalCharges": 151.0
-}
-```
+- `/live` comprueba que la aplicación responde. `/ready` comprueba que el modelo está cargado. `/health` informa el estado y, cuando el modelo está disponible, su identidad;
+- `LOW` indica score menor que 0,30. `MEDIUM` va desde 0,30 hasta menos de 0,70. `HIGH` empieza en 0,70. Los cortes son ilustrativos y El score permite estimar el riesgo de abandono, aunque no se ha comprobado su calibración como probabilidad.
 
-Para ese ejemplo, la respuesta comprobada en Swagger con Docker Compose fue HTTP 200:
+## CI y despliegue desde GHCR
 
-```json
-{
-  "prediction": "Yes",
-  "probability": 0.8826254980782651,
-  "risk_level": "HIGH",
-  "model_version": "1"
-}
-```
+El [workflow](.github/workflows/ci.yml) se ejecuta con pushes a `entrega-final`. Recupera los artefactos mediante DVC, verifica el hash del modelo, ejecuta pytest y promtool, y construye y prueba la imagen. La configuración actual exige además la auditoría de contenido antes del push a GHCR. Un segundo runner descarga el digest y repite la auditoría y el smoke test. La ejecución remota aprobada corresponde a la candidata vigente. El ajuste de orden aún debe verificarse en CI. [GitHub Actions](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45899392635)
 
-Se definieron umbrales iniciales de riesgo: **LOW** para probabilidad menor que 0.30, **MEDIUM** desde 0.30 y menor que 0.70, y **HIGH** desde 0.70. Son umbrales ilustrativos de negocio, no calibrados ni optimizados mediante validación. La clasificación `Yes/No` proviene de `model.predict` y puede no coincidir con el corte entre niveles de riesgo.
+La descarga DVC usa `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY` solo en ese paso. GHCR usa `GITHUB_TOKEN`. Las imágenes se identifican por revisión OCI, tag con SHA completo y digest. [Paquete GHCR](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/pkgs/container/istea-laboratorio-mineria-datos)
 
-La versión `"1"` se declara explícitamente en `app/inference.py` para identificar el modelo candidato de esta etapa; no se recupera dinámicamente del Registry. En un cambio de artefacto habrá que actualizar y comprobar ese identificador.
+El despliegue Linux combina [Compose base](compose.yaml) y [override Linux](compose.linux.yaml). Usa la imagen publicada por digest y requiere únicamente Docker Engine, Compose y los siete archivos de configuración listados en el [runbook](docs/runbook.md). El laboratorio se validó en Ubuntu sobre WSL 2 con Docker Engine nativo independiente de Docker Desktop. La aceptación académica de WSL 2 como host Linux distinto sigue pendiente. El SHA y el digest de la imagen final se incorporarán cuando se verifique esa construcción
 
-Las solicitudes con campos obligatorios ausentes o valores que infringen las restricciones declaradas reciben HTTP 422.
+### Acceso a los servicios
 
-## Pruebas automáticas
+Una vez iniciado el stack correspondiente, se puede acceder
+a los servicios desde las siguientes direcciones:
 
-Desde la raíz del proyecto, con el entorno virtual activado:
+| Servicio | Desarrollo con Docker | Despliegue Linux |
+|---|---|---|
+| Swagger | http://localhost:8001/docs | http://localhost:18001/docs |
+| Prometheus | http://localhost:9090 | http://localhost:19090 |
+| Grafana | http://localhost:3000 | http://localhost:13000 |
 
-```cmd
-python -m pytest tests/ -v
-```
+## Monitoreo
 
-Se incluyen seis tests de carga de datos, preprocesamiento, modelo y endpoints API (`/health`, `/predict` y validación de entradas). El test de predicción verifica los cuatro campos obligatorios, sus tipos básicos, la versión declarada y la coherencia del nivel de riesgo con los umbrales.
+Prometheus recolecta métricas cada cinco segundos y cuenta
+con tres alertas configuradas: indisponibilidad de la API,
+latencia elevada y errores del servidor.
 
-## Docker y Docker Compose
+Grafana muestra seis paneles que permiten visualizar el
+tráfico, la latencia, los errores y los scores del modelo.
 
-Antes de construir la imagen, descargar el modelo con DVC si aún no existe localmente. El `Dockerfile` incorpora `models/churn_model.joblib` dentro de la imagen: el contenedor **no entrena** el modelo.
+Evidently compara los datos de entrenamiento con el lote
+simulado y genera reportes en HTML y JSON, junto con
+información sobre los datos utilizados. La comparación
+detectó drift en **11 de 19 predictores (57,89 %)**,
+superando el umbral establecido del 50 %. Esto indica
+un cambio en la distribución de los datos, pero no
+necesariamente una pérdida de capacidad predictiva.
+Para comprobarlo, necesitaríamos conocer los resultados
+reales de abandono de los clientes del lote actual.
 
-Desde la raíz del proyecto:
-
-```cmd
-docker compose up -d --build
-```
-
-Consultar el estado del servicio:
-
-```cmd
-docker compose ps
-```
-
-La API queda publicada en:
-
-- Salud: http://localhost:8001/health
-- Swagger: http://localhost:8001/docs
-
-Compose expone el puerto 8001 del equipo hacia el 8000 del contenedor. Para consultar logs básicos de ejecución:
-
-```cmd
-docker compose logs churn-api
-```
-
-Para detener y eliminar los contenedores y la red creados por Compose (sin borrar la imagen ni los archivos del proyecto):
-
-```cmd
-docker compose down
-```
-
-## Estado de la segunda entrega
-
-El servicio se probó con Docker Compose y respondió HTTP 200 en `/predict` con los cuatro campos exigidos. Los seis tests locales finalizaron correctamente y el contrato de salida se define con Pydantic. **Pendiente de cierre:** marcar con el tag Git `entrega-2` el commit definitivo verificado.
-
-## Análisis exploratorio
-
-El análisis exploratorio inicial se encuentra en `notebooks/01_eda.ipynb`. El flujo reproducible de entrenamiento fue trasladado al código modular de `src/`.
-
-## Tecnologías utilizadas
-
-Python, pandas, scikit-learn, joblib, pytest, FastAPI, Uvicorn, MLflow, Docker, Docker Compose, Git/GitHub, DVC y DagsHub.
-
-## Calidad de datos y drift
-
-Desde la raíz del repositorio, preparar un entorno Python 3.11 independiente. El siguiente ejemplo es para PowerShell y presupone que `python` apunta a Python 3.11.
-
-```powershell
-$monitoringEnv = Join-Path $env:LOCALAPPDATA 'istea-churn-monitoring-venv'
-python -m venv $monitoringEnv
-$monitoringPython = Join-Path $monitoringEnv 'Scripts/python.exe'
-& $monitoringPython -m pip install -r monitoring/requirements.txt
-$env:EVIDENTLY_DISABLE_TELEMETRY = '1'
-& $monitoringPython -m monitoring.drift_report
-```
-
-El análisis requiere los CSV históricos y de producción en las rutas declaradas por sus punteros DVC. Si el CSV de producción todavía no está en el remoto, puede materializarse con `dvc checkout data/production/customer_churn_current.csv.dvc` desde una caché que tenga el objeto. También puede recuperarse del paquete original del profesor y comprobarse contra su checksum.
-
-Abrir `reports/drift_report.html` en el navegador. En el mismo directorio quedan `drift_report.json` con el resultado nativo de Evidently y `drift_provenance.json` con hashes, partición y modelo de referencia. Los tres archivos se regeneran al ejecutar el análisis. El lote de producción carece de etiquetas de churn.
-
-## Alertas operativas
-
-Levantar el stack con `docker compose up -d`. Consultar los estados en [Alertas de Prometheus](http://localhost:9090/alerts), la recolección en [Targets](http://localhost:9090/targets) y el dashboard en [Grafana](http://localhost:3000). Los criterios y el procedimiento de incidente están en el [plan de monitoreo](docs/plan_monitoreo.md).
-
-Con el stack activo, validar la configuración cargada y ejecutar las pruebas sintéticas desde PowerShell:
-
-```powershell
-docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
-docker run --rm --network none --mount "type=bind,source=$PWD/prometheus,target=/etc/prometheus,readonly" --entrypoint /bin/promtool prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
-```
-
-Para una demostración controlada de disponibilidad, detener solo `churn-api` con `docker compose stop churn-api`. Observar la alerta hasta que esté en estado `firing` y ejecutar `docker compose up -d churn-api`. Comprobar que el target vuelve a `UP` y revisar `/ready` y `/health`. Al finalizar, ejecutar `docker compose down` para conservar los volúmenes.
-
-## Preparación de CI
-
-Después del checkout de la revisión a verificar, preparar Python 3.11 y ejecutar los pasos en este orden:
-
-```bash
-python -m pip install -r requirements-ci.txt
-python -m pip check
-dvc pull -r origin data/raw/customer_churn_historical.csv.dvc train data/production/customer_churn_current.csv.dvc
-python -m pytest -q
-docker build --progress=plain -t istea-churn-api:ci .
-```
-
-Configurar el paso de `dvc pull` con las variables `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY`, vinculadas a los secretos propuestos `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY`. DVC usa el endpoint S3 de DagsHub definido en `.dvc/config`. Usar credenciales con lectura del repositorio, limitadas al paso de recuperación. [Autenticación de remotos S3 en DVC](https://doc.dvc.org/user-guide/data-management/remote-storage/amazon-s3#environment-variables)
-
-La suite completa usa el CSV histórico y `models/churn_model.joblib`. El target `train` de `dvc pull` recupera el joblib y `reports/metrics.json` según el lock aprobado. El CSV de producción completa la recuperación de evidencias y se usa en el análisis por lotes. Para el build, el Dockerfile copia el joblib, la API y su manifiesto de identidad, e instala `requirements-serving.txt`.
-
-En el futuro runner Linux se deben validar las ruedas de Python 3.11, el acceso de red a DagsHub y el arranque del contenedor. Git conserva CRLF en `requirements.txt` y en los cuatro módulos Python que DVC registra como dependencias de `train`. El build y la publicación versionada en GHCR deben depender del éxito de pytest. Las pruebas HTTP de CI deberán usar datos disponibles en el checkout, por ejemplo el caso válido empleado por la suite. El directorio externo del profesor está disponible en este laboratorio Windows.
-
-Para la etapa de publicación, usar una etiqueta vinculada al SHA de Git y reservar `GITHUB_TOKEN` con `packages: write` para el job de publicación. El checkout requiere `contents: read`. [Publicación de imágenes con GitHub Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
-
-### Integración continua en GitHub Actions
-
-El [workflow de integración continua](.github/workflows/ci.yml) se activa con un push a `entrega-final`. En Ubuntu 24.04 instala Python 3.11.9, recupera los cuatro artefactos de DVC y verifica la huella del modelo y el estado del pipeline. Pytest y las verificaciones de Prometheus deben aprobar para que empiece el build. El último paso prueba por HTTP los ejemplos del profesor con el contenedor construido y lo retira al terminar.
-
-Antes del primer push, abrir **Settings → Secrets and variables → Actions → New repository secret**. Crear `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY` con las credenciales existentes que dan acceso de lectura al remoto DagsHub. Las credenciales se exponen únicamente a `dvc pull`. El smoke test admite una diferencia absoluta de `1e-12` en la probabilidad para tolerar redondeo de punto flotante entre plataformas.
-
-El YAML declara `workflow_dispatch`. GitHub habilita el evento cuando el archivo está en la rama predeterminada. Mientras `main` conserve la segunda entrega, usar el disparador por push de `entrega-final` y consultar el resultado en **Actions**. [Requisito de la rama predeterminada](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch)
-
-La primera ejecución por push a `entrega-final` aprobó la recuperación DVC, las 90 pruebas, promtool, el build y el smoke test de `ISTEA_Churn/1`. [Ejecución de GitHub Actions](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45897092423)
-
-### Imagen candidata en GHCR
-
-El workflow publica la imagen que aprobó el smoke test y usa un segundo runner para descargarla por digest y repetir la comprobación. La candidata pública verificada corresponde a `sha-1e3ab250c3c29d52ee723a5b533fc1f4cc2d3179`. Su manifiesto admite descarga anónima.
-
-```bash
-docker pull ghcr.io/yochelo/istea-laboratorio-mineria-datos@sha256:bb4533c45d25fe198ab5495a60904c469a36fc1dc339ce45fe59268408864079
-```
-
-[Paquete GHCR](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/pkgs/container/istea-laboratorio-mineria-datos) · [Ejecución aprobada](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45899392635)
+- [Runbook de arranque, diagnóstico, monitoreo y recuperación](docs/runbook.md)
+- [Plan de monitoreo y actuación ante incidentes](docs/plan_monitoreo.md)
+- [Decisiones técnicas y evidencia](docs/decisiones_tecnicas.md)

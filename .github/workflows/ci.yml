@@ -80,6 +80,9 @@ jobs:
       - name: Verificar la API por HTTP
         run: bash tests/smoke_docker.sh "$PAQUETE:sha-$GITHUB_SHA"
 
+      - name: Auditar procedencia y contenido antes de publicar
+        run: bash tests/audit_docker.sh "$PAQUETE:sha-$GITHUB_SHA"
+
       - name: Publicar la imagen validada en GHCR
         id: publicar
         if: github.ref == 'refs/heads/entrega-final'
@@ -108,7 +111,7 @@ jobs:
     env:
       DIGEST: ${{ needs.verificar.outputs.digest }}
     steps:
-      - name: Recuperar el smoke test y sus ejemplos
+      - name: Recuperar las verificaciones y sus ejemplos
         uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
@@ -128,22 +131,7 @@ jobs:
           docker pull "$PAQUETE@$DIGEST"
 
       - name: Verificar procedencia y contenido de la imagen descargada
-        run: |
-          imagen="$PAQUETE@$DIGEST"
-          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' "$imagen")" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$imagen")" = "$GITHUB_SHA"
-          docker run --rm --network none --entrypoint find "$imagen" /app -type f > "$RUNNER_TEMP/contenido-imagen"
-          sort -o "$RUNNER_TEMP/contenido-imagen" "$RUNNER_TEMP/contenido-imagen"
-          { git ls-files 'app/*.py' app/model_manifest.json requirements-serving.txt
-            printf '%s\n' models/churn_model.joblib
-          } | sed 's|^|/app/|' | sort > "$RUNNER_TEMP/contenido-esperado"
-          diff -u "$RUNNER_TEMP/contenido-esperado" "$RUNNER_TEMP/contenido-imagen"
-          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$imagen" \
-            | cut -d= -f1 | sed '/^$/d' > "$RUNNER_TEMP/variables-imagen"
-          if grep -Ei 'SECRET|PASSWORD|TOKEN|CREDENTIAL|API_KEY|^AWS_|^DAGSHUB_|^MLFLOW_' "$RUNNER_TEMP/variables-imagen"; then
-            exit 1
-          fi
-          printf 'Contenido de aplicación y configuración de entorno verificados.\n'
+        run: bash tests/audit_docker.sh "$PAQUETE@$DIGEST"
 
       - name: Verificar el modelo y la API descargada por HTTP
         run: bash tests/smoke_docker.sh "$PAQUETE@$DIGEST"

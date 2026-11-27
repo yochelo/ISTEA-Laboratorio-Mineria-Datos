@@ -59,11 +59,13 @@ Swagger está en `/docs`. Para probar `POST /predict`, copiar en Swagger [el eje
 
 ## CI y despliegue desde GHCR
 
-El [workflow](.github/workflows/ci.yml) se ejecuta con pushes a `entrega-final`. Recupera los artefactos mediante DVC, verifica el hash del modelo, ejecuta pytest y promtool, y construye y prueba la imagen. La configuración actual exige además la auditoría de contenido antes del push a GHCR. Un segundo runner descarga el digest y repite la auditoría y el smoke test. La ejecución remota aprobada corresponde a la candidata vigente. El ajuste de orden aún debe verificarse en CI. [GitHub Actions](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45899392635)
+El [workflow](.github/workflows/ci.yml) se ejecuta con pushes a `entrega-final`. Recupera los artefactos mediante DVC, verifica el hash del modelo, ejecuta pytest y promtool, y construye y prueba la imagen. La ejecución aprobada confirmó que la auditoría de contenido se ejecuta antes del push a GHCR y que un segundo runner descarga el mismo digest y repite la auditoría y el smoke test. [GitHub Actions](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/actions/runs/45912957905)
 
 La descarga DVC usa `DAGSHUB_DVC_ACCESS_KEY_ID` y `DAGSHUB_DVC_SECRET_ACCESS_KEY` solo en ese paso. GHCR usa `GITHUB_TOKEN`. Las imágenes se identifican por revisión OCI, tag con SHA completo y digest. [Paquete GHCR](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/pkgs/container/istea-laboratorio-mineria-datos)
 
-El despliegue Linux combina [Compose base](compose.yaml) y [override Linux](compose.linux.yaml). Usa la imagen publicada por digest y requiere únicamente Docker Engine, Compose y los siete archivos de configuración listados en el [runbook](docs/runbook.md). El laboratorio se validó en Ubuntu sobre WSL 2 con Docker Engine nativo independiente de Docker Desktop. La aceptación académica de WSL 2 como host Linux distinto sigue pendiente. El SHA y el digest de la imagen final se incorporarán cuando se verifique esa construcción
+El despliegue Linux usa [Compose base](compose.yaml) y la copia operativa `compose.final.yaml`, generada según el [runbook](docs/runbook.md). El [override versionado](compose.linux.yaml) conserva el digest anterior para rollback. El laboratorio se validó en Ubuntu sobre WSL 2 con Docker Engine nativo independiente de Docker Desktop. La aceptación académica de WSL 2 como host Linux distinto sigue pendiente.
+
+Se comprobó la actualización de la API a una nueva imagen, el rollback a la versión anterior y el restablecimiento de la imagen actualizada, sin interrumpir los servicios de Prometheus y Grafana. Consultar la [release v1.0.0](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/releases/tag/v1.0.0) para obtener la revisión OCI, el digest definitivo y la configuración de despliegue.
 
 ### Acceso a los servicios
 

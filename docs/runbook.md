@@ -1,6 +1,6 @@
 # Runbook de operación del laboratorio
 
-El despliegue y las pruebas de funcionamiento se realizaron con Ubuntu 24.04.5 sobre WSL 2, Docker Engine nativo 29.10.1 y Compose v5.8.0. El motor de Docker funciona de manera independiente de Docker Desktop. Queda pendiente confirmar la aceptación de WSL 2 como entorno Linux para la entrega y validar los procedimientos de actualización y rollback.
+El despliegue y las pruebas de funcionamiento se realizaron con Ubuntu 24.04.5 sobre WSL 2, Docker Engine nativo 29.10.1 y Compose v5.8.0. El motor de Docker funciona de manera independiente de Docker Desktop. También se comprobaron los procedimientos de actualización y rollback de la imagen. Queda pendiente confirmar la aceptación académica de WSL 2 como entorno Linux para la entrega.
 
 ## Preparar y arrancar el stack
 
@@ -19,12 +19,12 @@ for archivo in \
 done
 ```
 
-Desde el directorio de despliegue, usar el socket nativo. `sudo` corresponde a la configuración comprobada de acceso al socket. Ingresar la contraseña en la terminal si se solicita. Ejecutar los bloques en la misma sesión y resolver cualquier error antes de continuar.
+Desde el directorio de despliegue, usar el socket nativo. `sudo` corresponde a la configuración comprobada de acceso al socket. Ingresar la contraseña en la terminal si se solicita. Para un nuevo despliegue, preparar primero `compose.final.yaml` siguiendo la sección de actualización. Ejecutar los bloques en la misma sesión y resolver cualquier error antes de continuar.
 
 ```bash
 cd "$HOME/istea-churn-linux"
 motor=(sudo docker --host unix:///var/run/docker.sock)
-compose=("${motor[@]}" compose -p istea-churn-linux -f compose.yaml -f compose.linux.yaml)
+compose=("${motor[@]}" compose -p istea-churn-linux -f compose.yaml -f compose.final.yaml)
 ss -H -ltn '( sport = :18001 or sport = :19090 or sport = :13000 )'
 "${compose[@]}" config --quiet
 "${compose[@]}" config --images
@@ -33,7 +33,7 @@ ss -H -ltn '( sport = :18001 or sport = :19090 or sport = :13000 )'
 "${compose[@]}" ps
 ```
 
-Revisar también esos puertos en Windows si se usa WSL. `pull` recupera la imagen pública de GHCR por el digest del override y las dos imágenes de observabilidad. La candidata actualmente comprobada es la que fija [compose.linux.yaml](../compose.linux.yaml). El SHA de la revisión OCI y el digest de la futura imagen final se anotarán tras verificarla.
+Revisar también esos puertos en Windows si se usa WSL. `pull` recupera la imagen pública de GHCR por el digest de la copia operativa y las dos imágenes de observabilidad. [compose.linux.yaml](../compose.linux.yaml) conserva la configuración anterior para rollback.
 
 ## Comprobaciones y diagnóstico
 
@@ -87,30 +87,41 @@ Abrir reports/drift_report.html en el navegador para visualizar los resultados. 
 
 ## Actualización y rollback por digest
 
-Guardar la configuración activa y su digest antes de editar:
+Consultar la [release v1.0.0](https://github.com/yochelo/ISTEA-Laboratorio-Mineria-Datos/releases/tag/v1.0.0) para obtener el digest definitivo y la copia operativa `compose.final.yaml`. Para generarla manualmente, conservar `compose.linux.yaml` y crear el nuevo archivo solo si todavía no existe. Si ya existe, verificar su digest antes de reutilizarlo.
 
 ```bash
-"${compose[@]}" config --images
-cp -p compose.linux.yaml compose.linux.anterior.yaml
+cd "$HOME/istea-churn-linux"
+motor=(sudo docker --host unix:///var/run/docker.sock)
+patron='^ghcr\.io/yochelo/istea-laboratorio-mineria-datos@sha256:[0-9a-f]{64}$'
+if read -r -p 'Referencia completa de la imagen por digest: ' imagen &&
+  [[ "$imagen" =~ $patron ]]; then
+  test ! -e compose.final.yaml &&
+    sed -E "s|^    image: ghcr\\.io/yochelo/istea-laboratorio-mineria-datos@sha256:[0-9a-f]{64}$|    image: $imagen|" \
+      compose.linux.yaml > compose.final.yaml
+else
+  printf '%s\n' 'Ingresar la referencia de GHCR del proyecto con un digest SHA-256 de 64 caracteres hexadecimales.' >&2
+  false
+fi
 ```
 
-Cambiar únicamente `services.churn-api.image` en `compose.linux.yaml` a la referencia de GHCR aprobada por digest. Confirmar en la salida de `config --images` que aparece ese digest. Luego actualizar solo la API:
+Verificar la referencia efectiva y actualizar solo la API:
 
 ```bash
-"${compose[@]}" config --images
-"${compose[@]}" pull churn-api &&
-  "${compose[@]}" up -d --no-build --pull never --wait churn-api
+compose=("${motor[@]}" compose -p istea-churn-linux -f compose.yaml -f compose.final.yaml)
+"${compose[@]}" config --images | grep -Fx -- "$imagen" &&
+  "${compose[@]}" pull churn-api &&
+  "${compose[@]}" up -d --no-deps --no-build --pull never --wait churn-api
 ```
 
-Repetir salud, hash, las dos solicitudes y el estado del target. Si la actualización falla, restaurar el override y validar su digest antes de volver a levantar la API:
+Repetir salud, hash, las dos solicitudes y el estado del target. Para volver a la imagen anterior conservada localmente:
 
 ```bash
-cp -p compose.linux.anterior.yaml compose.linux.yaml
-"${compose[@]}" config --images
-"${compose[@]}" pull churn-api &&
-  "${compose[@]}" up -d --no-build --pull never --wait churn-api
+anterior=("${motor[@]}" compose -p istea-churn-linux -f compose.yaml -f compose.linux.yaml)
+"${anterior[@]}" config --images |
+  grep -Fx -- 'ghcr.io/yochelo/istea-laboratorio-mineria-datos@sha256:bb4533c45d25fe198ab5495a60904c469a36fc1dc339ce45fe59268408864079' &&
+  "${anterior[@]}" up -d --no-deps --no-build --pull never --wait churn-api
 ```
 
-Repetir los controles tras la recuperación. Los volúmenes de Prometheus y Grafana se conservan durante ambas operaciones.
+Repetir los controles tras la recuperación. Para restablecer la imagen nueva ya descargada, ejecutar `"${compose[@]}" up -d --no-deps --no-build --pull never --wait churn-api` con la copia operativa y volver a comprobar la API. Prometheus y Grafana siguieron en ejecución durante la prueba.
 
 Para detener el stack preservando sus datos, ejecutar `"${compose[@]}" down`, sin `--volumes`.

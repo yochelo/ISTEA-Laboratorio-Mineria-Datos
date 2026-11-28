@@ -2,6 +2,12 @@
 
 Proyecto desarrollado para la materia **Laboratorio de Minería de Datos** (ISTEA).
 
+## 🎬 Presentación del proyecto
+
+[![Customer Churn - Del dato a la producción](https://img.youtube.com/vi/57CWI9pmLew/maxresdefault.jpg)](https://www.youtube.com/watch?v=57CWI9pmLew)
+
+[Ver presentación completa en YouTube (14:14)](https://www.youtube.com/watch?v=57CWI9pmLew)
+
 El objetivo es construir un flujo reproducible de análisis, entrenamiento y evaluación de modelos de clasificación para predecir la baja de clientes (*churn*), y exponer el modelo seleccionado mediante una API REST.
 
 ## Estructura del proyecto
